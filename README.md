@@ -1,6 +1,6 @@
 # Splash Crucible
 
-A UI built my a robot, to help me play a videogame
+A UI built by a robot, to help me play a videogame
 
 ## Special Thanks
 
