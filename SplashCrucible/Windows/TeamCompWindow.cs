@@ -26,6 +26,7 @@ public sealed class TeamCompWindow : Window, IDisposable
     public bool TeamCompositionVisible { get; set; }
 
     private readonly List<PetPartyUiEvent> petPartyUiEvents = new();
+    private string[] petPartyAtkValueChanges = Array.Empty<string>();
 
     public TeamCompWindow()
         : base("Splash Crucible##Main")
@@ -51,6 +52,9 @@ public sealed class TeamCompWindow : Window, IDisposable
         if (petPartyUiEvents.Count > 30)
             petPartyUiEvents.RemoveRange(30, petPartyUiEvents.Count - 30);
     }
+
+    public void SetPetPartyAtkValueChanges(string[] changes)
+        => petPartyAtkValueChanges = changes;
 
     public override void Draw()
     {
@@ -81,23 +85,34 @@ public sealed class TeamCompWindow : Window, IDisposable
 
         ImGui.Spacing();
         DrawSectionHeader("Team Composition click diagnostic");
-        ImGui.TextDisabled("Observation only: this section records native XBMPetParty UI events and does not fire callbacks.");
+        ImGui.TextDisabled("Observation only: records native XBMPetParty events and AtkValue changes; does not fire callbacks.");
 
         if (!TeamCompositionVisible)
             ImGui.TextDisabled("Open Team Composition before testing row clicks.");
 
         if (ImGui.Button("Clear Events"))
+        {
             petPartyUiEvents.Clear();
+            petPartyAtkValueChanges = Array.Empty<string>();
+        }
 
         ImGui.SameLine();
         ImGui.TextUnformatted($"Recorded: {petPartyUiEvents.Count}");
 
-        if (petPartyUiEvents.Count == 0)
+        if (petPartyAtkValueChanges.Length > 0)
         {
-            ImGui.TextDisabled("Clear events, then manually click one BST row in Team Composition.");
+            ImGui.TextUnformatted("AtkValue changes after latest ListItemClick:");
+            foreach (var change in petPartyAtkValueChanges)
+                ImGui.BulletText(change);
         }
         else
         {
+            ImGui.TextDisabled("No click comparison recorded yet.");
+        }
+
+        if (petPartyUiEvents.Count > 0)
+        {
+            ImGui.TextUnformatted("Recent native UI events:");
             foreach (var uiEvent in petPartyUiEvents)
             {
                 ImGui.BulletText(
