@@ -12,10 +12,10 @@ Splash Crucible is a personal-use Dalamud plugin for BST Crucible content. Its p
 - Refer to Beastmaster only as BST in project-facing text.
 - Do not mention the game title in project descriptions or documentation.
 - Do not guess XBM UI meanings when they can be established from diagnostics or current client structures.
-- **Hard interaction boundary:** Splash Crucible must not intentionally send data or actions to the game server.
-- Interactive features must remain restricted to reading or driving the local `XBMPetParty` Team Composition UI unless the user explicitly changes this rule.
+- **Hard interaction boundary:** Splash Crucible must not intentionally send data or actions to the game server unless the user explicitly requests a scoped exception for a specific feature.
+- Interactive features must otherwise remain restricted to reading or driving the local `XBMPetParty` Team Composition UI.
 - Do not use packet/network helpers, combat actions, commands, server-bound agent actions, or unrelated state-changing APIs for Team Composition convenience features.
-- Before reproducing a native Team Composition interaction, first observe the exact native UI event/callback and verify that the implementation is limited to the local addon UI path.
+- Before reproducing a native UI interaction, first observe the exact native event/callback where practical instead of guessing.
 - **Window sizing rule:** keep the current minimum window size at `560 x 360`. Do not increase the minimum size without explicit user approval.
 
 ## Current architecture
@@ -78,13 +78,21 @@ Colour is rendered as a coloured circle; Borrow Type and Tempered Release Type a
 - The most recently read Horn assignments, squad list, and HP values are cached in plugin memory so they remain visible after the native Team Composition window closes.
 - Squad rows are clickable while Team Composition is open and reproduce the native left-click row activation path.
 - Assigned Party rows are also clickable while Team Composition is open and route through the matching Squad row, so they can remove/toggle that assignment through the same validated native UI path.
-- The temporary Team Composition HP diagnostic has been removed after confirming current HP at row-relative offset `+11` and max HP at `+12`.
 - While `XBMStageDetailList` is visible, Splash reads the top enemy weakness from AtkValue `[62]`, extracts the known weakness name, and caches it for the current encounter.
 - Any Party or Squad BST whose auto-attack Aspect matches the cached top-enemy weakness gets a visible highlight around its Aspect icon.
 - `Summon 1` appears under Party. Splash checks the local object table for an owned active BST whose name matches the cached Squad. When no active BST is detected, the button is highlighted; pressing it synthesizes the user's existing Numpad 6 bind. When a BST is already active, the button is not highlighted and does nothing.
+- A temporary `XBMStageDetailList` **Board Layout event diagnostic** is enabled to identify the native `Commence Battle` button event before reproducing it in Splash. It records the latest 12 receive events as `AtkEventType | EventParam` and retains them after the Board Layout closes so the native click can be inspected.
+- The user has explicitly requested a future scoped exception allowing a Splash `Commence Battle` button to reproduce the native Board Layout button. Because that action starts an encounter and may cause normal server-bound game behavior, the exact native UI event is being observed first rather than guessed.
 - The next mode-detection task is to distinguish playable Map from active Combat using reliable observed state rather than a guessed single-addon marker.
 
 ## Immediate diagnostic targets
+
+### Commence Battle
+1. Open a Board Layout.
+2. Do not interact with other controls immediately before the test if possible.
+3. Click the native `Commence Battle` button once.
+4. Read the retained `Board Layout events (temporary diagnostic)` section in Splash and identify the click-related event type and `EventParam`.
+5. Only after that event is confirmed should Splash reproduce the same native UI path from its own `Commence Battle` button.
 
 ### Mode detection
 Capture/compare the active XBM addon set in:
