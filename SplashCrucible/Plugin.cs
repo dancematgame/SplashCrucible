@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.InteropServices;
 using Dalamud.Game.Addon.Lifecycle;
 using Dalamud.Game.Addon.Lifecycle.AddonArgTypes;
 using Dalamud.IoC;
@@ -18,6 +19,8 @@ public sealed class Plugin : IDalamudPlugin
     [PluginService] internal static IGameGui GameGui { get; private set; } = null!;
     [PluginService] internal static IFramework Framework { get; private set; } = null!;
     [PluginService] internal static IAddonLifecycle AddonLifecycle { get; private set; } = null!;
+    [PluginService] internal static IObjectTable ObjectTable { get; private set; } = null!;
+    [PluginService] internal static IClientState ClientState { get; private set; } = null!;
     [PluginService] internal static IPluginLog Log { get; private set; } = null!;
 
     private const string TeamCompositionAddonName = "XBMPetParty";
@@ -30,6 +33,9 @@ public sealed class Plugin : IDalamudPlugin
     private const int FirstPartyNameIndex = 9;
     private const int FirstPartyAssignmentIndex = 80;
     private const int FirstEnemyWeaknessIndex = 62;
+
+    private const byte VkNumpad6 = 0x66;
+    private const uint KeyeventfKeyup = 0x0002;
 
     private static readonly string[] KnownWeaknesses =
     {
@@ -50,6 +56,7 @@ public sealed class Plugin : IDalamudPlugin
         mainWindow = new TeamCompWindow
         {
             SquadRowClicked = SelectTeamCompositionRow,
+            SummonHorn1Requested = SummonHorn1,
         };
 
         windowSystem.AddWindow(mainWindow);
@@ -127,8 +134,50 @@ public sealed class Plugin : IDalamudPlugin
         mainWindow.SquadNames = cachedSquadNames.ToArray();
         mainWindow.TopEnemyWeakness = cachedTopEnemyWeakness;
         mainWindow.TeamCompositionVisible = teamPartyVisible;
+        mainWindow.HasActivePet = HasOwnedSquadPet();
         mainWindow.ActiveXbmAddons = activeXbmAddons.OrderBy(x => x, StringComparer.Ordinal).ToArray();
         mainWindow.TeamCompositionRowDiagnostic = teamPartyVisible ? ReadTeamCompositionRowDiagnostic() : Array.Empty<string>();
+    }
+
+    private bool HasOwnedSquadPet()
+    {
+        var player = ClientState.LocalPlayer;
+        if (player == null)
+            return false;
+
+        var playerEntityId = player.EntityId;
+        if (playerEntityId == 0)
+            return false;
+
+        var knownSquadNames = cachedSquadNames
+            .Where(name => !string.IsNullOrWhiteSpace(name) && name != "(unknown)" && name != "(unassigned)")
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        if (knownSquadNames.Count == 0)
+            return false;
+
+        foreach (var gameObject in ObjectTable)
+        {
+            if (gameObject == null || gameObject.OwnerId != playerEntityId)
+                continue;
+
+            if (knownSquadNames.Contains(gameObject.Name.TextValue))
+                return true;
+        }
+
+        return false;
+    }
+
+    private void SummonHorn1()
+    {
+        // Explicitly user-requested scoped exception to the project's normal local-UI-only rule:
+        // synthesize the user's existing Numpad 6 keybind. No action, command, agent, packet,
+        // or network API is invoked directly by Splash Crucible.
+        if (HasOwnedSquadPet())
+            return;
+
+        keybd_event(VkNumpad6, 0, 0, UIntPtr.Zero);
+        keybd_event(VkNumpad6, 0, KeyeventfKeyup, UIntPtr.Zero);
     }
 
     private unsafe void TryUpdateTopEnemyWeakness()
@@ -296,4 +345,7 @@ public sealed class Plugin : IDalamudPlugin
         windowSystem.RemoveAllWindows();
         mainWindow.Dispose();
     }
+
+    [DllImport("user32.dll")]
+    private static extern void keybd_event(byte bVk, byte bScan, uint dwFlags, UIntPtr dwExtraInfo);
 }
