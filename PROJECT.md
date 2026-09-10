@@ -11,23 +11,54 @@ Splash Crucible is a personal-use Dalamud plugin for BST Crucible content. Its p
 - Preserve accessibility as the main design objective.
 - Refer to Beastmaster only as BST in project-facing text.
 - Do not mention the game title in project descriptions or documentation.
+- Do not guess XBM UI meanings when they can be established from diagnostics or current client structures.
 
-## Current milestone: Team Comp UI
-Create an addon-powered companion window for the BST Team Composition UI.
+## Current architecture
+Splash Crucible has one persistent main window which is intended to remain open continuously. The information shown in that window changes according to the current Crucible context.
 
-### First test
-When the Team Composition window is visible, Splash Crucible should display its own window containing:
+Current mode targets:
+1. **Team Selection** — outside the instance, editing the 12-BST team.
+2. **Board Selection** — choosing which board/challenge to enter.
+3. **Map** — playable Crucible map, including opening Team Composition to assign BSTs to Horn 1 / Horn 2 / Horn 3.
+4. **Combat** — active encounter gameplay.
+5. **Results** — potentially useful later.
 
-    Splash Debug
+## Confirmed / observed UI findings
+- `XBMPetParty` is the Team Composition box.
+- `XBMPetParty` appears both during outside-instance Team Selection and on the playable map when assigning BSTs to Horns, so it is not a unique mode marker.
+- `XBMStageMap` is the Board Selection graphic, not the playable map.
+- `XBMStageList` is the Board Selection list.
+- `XBMContentsMainHUD` is present on the playable map and therefore must not be treated as a Combat-only marker.
+- See `XBM_UI_MAP.md` for the current full mapping table and confidence notes.
 
-When Team Composition closes, the Splash Crucible window should close/hide too.
+## Current implementation state
+- The main Splash Crucible window is permanently visible.
+- The current build includes diagnostic support for observing active XBM addons.
+- Earlier semantic mode guesses were intentionally rolled back where evidence showed they were incorrect.
+- The next task is to derive reliable context rules from actual observed UI/game state rather than single-addon guesses.
 
-## Current uncertainty
-BST Crucible is new content and the exact internal Atk addon name for the Team Composition UI still needs to be verified in-game. Candidate XBM addon names are temporarily checked in Plugin.cs. Once identified, replace this candidate list with the confirmed identifier.
+## Immediate diagnostic target
+Capture/compare the active XBM addon set in:
+1. Playable map, no Team Composition window open.
+2. Playable map with `XBMPetParty` open for Horn assignment.
+3. Active combat encounter.
 
-## Next milestones
-1. Confirm the Team Composition Atk addon name.
-2. Make companion-window visibility reliably mirror Team Composition.
-3. Inspect Team Composition data/state.
-4. Display calculated information about the selected team.
-5. Expand Crucible accessibility features incrementally.
+If Combat does not expose a unique XBM addon, detect it via another reliable game-state signal.
+
+## Local workflow
+Repository: `https://github.com/dancematgame/SplashCrucible`
+
+Local checkout:
+`F:\ff port\SplashCrucible`
+
+After repository changes:
+```powershell
+cd "F:\ff port\SplashCrucible"
+git pull
+dotnet build
+```
+
+The resulting DLL is loaded as a Dalamud development plugin for testing.
+
+## Handoff rule for future chats
+A fresh chat should first inspect this repository, especially `PROJECT.md`, `XBM_UI_MAP.md`, `SplashCrucible/Plugin.cs`, and the main window class, before suggesting or making changes. GitHub is the continuity layer; do not rely on previous-chat memory.
