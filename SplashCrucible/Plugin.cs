@@ -16,10 +16,11 @@ public sealed class Plugin : IDalamudPlugin
     private readonly WindowSystem windowSystem = new("SplashCrucible");
     private readonly TeamCompWindow teamCompWindow;
 
-    // Temporary until we identify the exact internal name of the new 7.56 Team Composition addon.
+    // Temporary until we identify the exact internal name of the new Team Composition addon.
     // Once identified, this becomes a single constant.
     private static readonly string[] CandidateAddonNames =
     {
+        "XBMContentsMainHUD",
         "XBMTeamComposition",
         "XBMTeamComp",
         "XBMParty",
