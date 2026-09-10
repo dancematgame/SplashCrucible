@@ -13,7 +13,8 @@ public enum CrucibleMode
     Unknown,
     TeamSelection,
     BoardSelection,
-    InInstanceUnresolved,
+    Map,
+    Arena,
 }
 
 public sealed class TeamCompWindow : Window, IDisposable
@@ -53,7 +54,8 @@ public sealed class TeamCompWindow : Window, IDisposable
         {
             CrucibleMode.TeamSelection => "Team Selection",
             CrucibleMode.BoardSelection => "Board Selection",
-            CrucibleMode.InInstanceUnresolved => "Map / Combat (unresolved)",
+            CrucibleMode.Map => "Map",
+            CrucibleMode.Arena => "Arena",
             _ => "Unknown / Idle",
         };
 
