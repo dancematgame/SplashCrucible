@@ -128,6 +128,7 @@ public sealed class Plugin : IDalamudPlugin
         mainWindow.TopEnemyWeakness = cachedTopEnemyWeakness;
         mainWindow.TeamCompositionVisible = teamPartyVisible;
         mainWindow.ActiveXbmAddons = activeXbmAddons.OrderBy(x => x, StringComparer.Ordinal).ToArray();
+        mainWindow.TeamCompositionRowDiagnostic = teamPartyVisible ? ReadTeamCompositionRowDiagnostic() : Array.Empty<string>();
     }
 
     private unsafe void TryUpdateTopEnemyWeakness()
@@ -150,6 +151,45 @@ public sealed class Plugin : IDalamudPlugin
         var raw = value.GetValueAsString();
         cachedTopEnemyWeakness = KnownWeaknesses.FirstOrDefault(
             weakness => raw.Contains(weakness, StringComparison.OrdinalIgnoreCase)) ?? string.Empty;
+    }
+
+    private unsafe string[] ReadTeamCompositionRowDiagnostic()
+    {
+        var addon = GameGui.GetAddonByName<AtkUnitBase>(TeamCompositionAddonName);
+        if (addon == null || addon->AtkValues == null)
+            return Array.Empty<string>();
+
+        var row = Array.FindIndex(cachedSquadNames,
+            name => string.Equals(name, "Treant", StringComparison.OrdinalIgnoreCase));
+        if (row < 0)
+            row = Array.FindIndex(cachedSquadNames,
+                name => !string.IsNullOrWhiteSpace(name) && name != "(unknown)");
+        if (row < 0)
+            return Array.Empty<string>();
+
+        var start = row * PartyRowStride;
+        var end = Math.Min(start + PartyRowStride - 1, addon->AtkValuesCount - 1);
+        var values = new List<string> { $"BST: {cachedSquadNames[row]} | row {row} | AtkValues {start}-{end}" };
+
+        for (var i = start; i <= end; i++)
+        {
+            var value = addon->AtkValues[i];
+            var type = value.Type & AtkValueType.TypeMask;
+            string? text = type switch
+            {
+                AtkValueType.String or AtkValueType.String8 => value.GetValueAsString(),
+                AtkValueType.Int when value.Int != 0 => value.Int.ToString(),
+                AtkValueType.UInt when value.UInt != 0 => value.UInt.ToString(),
+                AtkValueType.Bool when value.Byte != 0 => "true",
+                AtkValueType.Float when Math.Abs(value.Float) > 0.0001f => value.Float.ToString("0.###"),
+                _ => null,
+            };
+
+            if (!string.IsNullOrWhiteSpace(text))
+                values.Add($"[{i}] +{i - start} {type}: {text}");
+        }
+
+        return values.ToArray();
     }
 
     private unsafe void SelectTeamCompositionRow(int row)
