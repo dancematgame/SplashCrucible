@@ -8,5 +8,6 @@
     <Description>Provides additional UI and calculated information for BST Crucible content.</Description>
     <RepoUrl>https://github.com/dancematgame/SplashCrucible</RepoUrl>
     <Tags>bst;crucible;accessibility</Tags>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
 </Project>
