@@ -27,8 +27,10 @@ public sealed class TeamCompWindow : Window, IDisposable
     public string TopEnemyWeakness { get; set; } = string.Empty;
     public bool TeamCompositionVisible { get; set; }
     public bool HasActivePet { get; set; }
+    public bool BoardLayoutVisible { get; set; }
     public Action<int>? SquadRowClicked { get; set; }
     public Action? SummonHorn1Requested { get; set; }
+    public Action? CommenceBattleRequested { get; set; }
 
     public TeamCompWindow()
         : base("Splash Crucible##Main")
@@ -64,7 +66,6 @@ public sealed class TeamCompWindow : Window, IDisposable
         DrawPartyRow(0);
         DrawPartyRow(1);
         DrawPartyRow(2);
-        DrawSummonButton();
 
         ImGui.Spacing();
         DrawSectionHeader("Squad");
@@ -79,11 +80,29 @@ public sealed class TeamCompWindow : Window, IDisposable
         if (ActiveXbmAddons.Length == 0)
         {
             ImGui.TextDisabled("(none observed)");
-            return;
+        }
+        else
+        {
+            foreach (var addonName in ActiveXbmAddons)
+                ImGui.BulletText(addonName);
         }
 
-        foreach (var addonName in ActiveXbmAddons)
-            ImGui.BulletText(addonName);
+        if (BoardLayoutVisible)
+        {
+            ImGui.Spacing();
+            DrawCenteredButton("Commence Battle", () => CommenceBattleRequested?.Invoke());
+        }
+
+        ImGui.Spacing();
+        DrawSummonButton();
+    }
+
+    private static void DrawCenteredButton(string label, Action onPressed)
+    {
+        var buttonSize = ImGui.CalcTextSize(label) + new Vector2(24f, 10f);
+        ImGui.SetCursorPosX(ImGui.GetCursorPosX() + Math.Max(0f, (ImGui.GetContentRegionAvail().X - buttonSize.X) * 0.5f));
+        if (ImGui.Button(label, buttonSize))
+            onPressed();
     }
 
     private void DrawSummonButton()
