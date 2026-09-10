@@ -35,6 +35,7 @@ The top-level displayed states are intentionally limited to:
 - `XBMContentsMainHUD` is present while inside the Crucible and is used as the broad in-duty signal.
 - `XBMStageDetailList` is the Board Layout window.
 - `XBMResult` is the post-encounter Results panel.
+- Several XBM addons can remain allocated after being hidden. Pointer existence from `GetAddonByName` therefore must not be treated as equivalent to visible UI state. Splash now checks `AtkUnitBase.IsVisible` for Team Composition, Board Layout, and Results.
 - `XBMPetParty` exposes the displayed 12-BST list through repeated `AtkValue` row blocks.
 - Each displayed BST row uses a stride of 77 `AtkValue` entries.
 - Row 0 name is at index `9`; subsequent names are `9 + (row * 77)`.
@@ -50,14 +51,16 @@ The top-level displayed states are intentionally limited to:
 - The Board Layout top enemy name is cached from `[57]` and used as the Arena-arrival signal.
 - Native `Commence Battle` observation on `XBMStageDetailList` produced `ButtonClick | EventParam=9`.
 - The earlier direct synthetic call to `AtkEventListener.ReceiveEvent(ButtonClick, 9, null, null)` crashed the client and must not be retried.
+- The current Commence Battle implementation reuses the native button's stored `AtkEvent*` and has now been runtime-validated successfully.
 
 ## State detection
-- `XBMPetParty` visible while `XBMContentsMainHUD` is absent -> **Select Squad**.
-- `XBMContentsMainHUD` visible and the current cached top enemy has not yet appeared -> **Map**.
+- `XBMPetParty` visibly open while `XBMContentsMainHUD` is absent -> **Select Squad**.
+- `XBMContentsMainHUD` present and the current cached top enemy has not yet appeared -> **Map**.
 - Once the cached top enemy appears as a targetable object in the local object table -> **Arena**.
 - Arena remains latched if the enemy later dies/despawns so the state does not drop early during the encounter.
-- While Arena is active, seeing `XBMResult` marks the encounter as complete; when that Results panel then closes while `XBMContentsMainHUD` remains present, Splash resets Arena -> Map and clears the cached enemy/weakness. This is the earliest currently-known post-fight return-to-Map signal and requires runtime validation.
-- Opening a new `XBMStageDetailList` Board Layout also clears the Arena latch for the next board.
+- Preferred Arena -> Map signal: `XBMResult` becomes visibly open during Arena and then visibly closes while the in-duty HUD remains present. Earlier code checked only addon pointer existence, which could never observe the hide transition if the addon remained allocated.
+- Runtime-proven fallback: if Team Composition becomes visibly open while still inside the duty, Splash clears Arena -> Map. This prevents Arena remaining latched forever if the Results transition is not usable for a particular encounter.
+- Opening a new visible `XBMStageDetailList` Board Layout also clears the Arena latch for the next board.
 - Losing `XBMContentsMainHUD` clears the Arena latch because the player is no longer considered inside the Crucible.
 
 ## BST metadata
@@ -79,13 +82,14 @@ Auto-attack Aspect is stored for all 50 BSTs using elemental aspects plus Slashi
 - **Party** displays the three assigned BSTs with colour, native auto-attack Aspect icon, Borrow Type, Tempered Release Type, and HP percentage.
 - **Squad** lists all 12 BSTs in Team Composition row order with the same metadata.
 - Squad row text is visually bold for faster scanning.
-- Horn names, squad names, and HP values update live while Team Composition is open and are cached after it closes.
-- Squad and assigned Party rows are clickable while Team Composition is open using the validated native left-click path.
-- While `XBMStageDetailList` is visible, Splash reads and caches the top enemy name from AtkValue `[57]` and weakness from `[62]`.
+- Horn names, squad names, and HP values update live while Team Composition is visibly open and are cached after it closes.
+- Squad and assigned Party rows are clickable while Team Composition is visibly open using the validated native left-click path.
+- While Board Layout is visibly open, Splash reads and caches the top enemy name from AtkValue `[57]` and weakness from `[62]`.
 - Any Party or Squad BST whose auto-attack Aspect matches the cached top-enemy weakness gets a visible highlight around its Aspect icon.
-- `Summon 1` is now the final control at the bottom of the Splash window. It remains centered and synthesizes the user's existing Numpad 6 bind when no active squad BST is detected.
-- Arena auto-summon is tied to Map -> Arena. The check is always queued on Arena entry, waits 750 ms, then retries locally every 250 ms for up to 5 seconds if an owned BST object is still reported. This avoids a stale pre-transition BST object permanently suppressing the summon. Once no active BST is reported, Splash sends Numpad 6 exactly once for that board.
-- `Commence Battle` is restored while `XBMStageDetailList` is open. Instead of fabricating an event with null context, Splash scans the native button components for their real stored `ButtonClick` event with `EventParam=9` and passes that actual `AtkEvent*` back through the addon receive-event path. This implementation is based on the standard native-button replay pattern used by existing Dalamud plugins, but is not yet runtime-validated in Splash.
+- `Summon 1` is the final control at the bottom of the Splash window. It remains centered and synthesizes the user's existing Numpad 6 bind when no active squad BST is detected.
+- Arena auto-summon is tied to Map -> Arena. The check is queued on Arena entry, waits 750 ms, then retries locally every 250 ms for up to 5 seconds if an owned BST object is still reported. Once no active BST is reported, Splash sends Numpad 6 exactly once for that board.
+- Auto-summon lifecycle is now reset on the **visible rising edge** of Board Layout, not only `AddonEvent.PostSetup`. This fixes the case where `XBMStageDetailList` is reused between boards and the one-shot summon gate otherwise remains completed forever after the first encounter.
+- `Commence Battle` is shown while Board Layout is visibly open. Splash scans the native button components for their real stored `ButtonClick` event with `EventParam=9` and passes that actual `AtkEvent*` back through the addon receive-event path. This implementation is runtime-validated and works.
 
 ## Server-interaction boundary
 - Splash contains no packet-writing, network helper, action-manager, chat-command, or agent-action implementation for these features.
@@ -97,11 +101,12 @@ Auto-attack Aspect is stored for all 50 BSTs using elemental aspects plus Slashi
 1. Confirm **Select Squad** while outside the duty with Team Composition open.
 2. Confirm **Map** while inside the duty before the cached enemy appears.
 3. Confirm **Arena** when the cached top enemy appears.
-4. After an encounter, confirm closing the Results panel changes Arena -> Map before Team Composition is reopened.
-5. Confirm entering Arena with no active BST auto-summons Horn 1 after the short delay/retry window.
-6. Confirm entering Arena with an already active BST does not synthesize Numpad 6.
-7. Confirm `Summon 1` is at the bottom of the Splash UI.
-8. Carefully runtime-test the restored `Commence Battle` button once. If it crashes or behaves incorrectly, remove/disable it immediately and capture the native event target/context rather than trying speculative variants.
+4. After an encounter, confirm the visible Results transition changes Arena -> Map before Team Composition is reopened; if not, confirm Team Composition still provides the fallback reset.
+5. Confirm a newly opened Board Layout resets the per-board auto-summon gate even when the addon object itself was reused.
+6. Confirm entering Arena with no active BST auto-summons Horn 1 after the short delay/retry window.
+7. Confirm entering Arena with an already active BST does not synthesize Numpad 6.
+8. Confirm `Summon 1` remains at the bottom of the Splash UI.
+9. `Commence Battle` is runtime-validated as working with the native stored event path.
 
 ## Local workflow
 Repository: `https://github.com/dancematgame/SplashCrucible`
