@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 using Dalamud.Game.Addon.Lifecycle;
 using Dalamud.Game.Addon.Lifecycle.AddonArgTypes;
@@ -82,33 +83,43 @@ public sealed class Plugin : IDalamudPlugin
             mainWindow.CurrentMode = CrucibleMode.Unknown;
 
         mainWindow.ActiveXbmAddons = activeXbmAddons.OrderBy(x => x, StringComparer.Ordinal).ToArray();
-        mainWindow.PetPartyStringValues = ReadPetPartyStringValues();
+        mainWindow.PetPartyValues = ReadPetPartyValues();
     }
 
-    private unsafe string[] ReadPetPartyStringValues()
+    private unsafe PetPartyValue[] ReadPetPartyValues()
     {
         var addon = GameGui.GetAddonByName<AtkUnitBase>(TeamCompositionAddonName);
         if (addon == null || addon->AtkValues == null || addon->AtkValuesCount == 0)
-            return Array.Empty<string>();
+            return Array.Empty<PetPartyValue>();
 
-        var values = new List<string>();
+        var values = new PetPartyValue[addon->AtkValuesCount];
 
         for (var i = 0; i < addon->AtkValuesCount; i++)
         {
             var value = addon->AtkValues[i];
-            var baseType = value.Type & AtkValueType.TypeMask;
-
-            if (baseType is not (AtkValueType.String or AtkValueType.ConstString or AtkValueType.WideString))
-                continue;
-
-            var text = value.GetValueAsString();
-            if (string.IsNullOrWhiteSpace(text))
-                continue;
-
-            values.Add($"[{i}] {value.Type}: {text}");
+            values[i] = new PetPartyValue(i, value.Type.ToString(), FormatAtkValue(value));
         }
 
-        return values.ToArray();
+        return values;
+    }
+
+    private static string FormatAtkValue(AtkValue value)
+    {
+        var baseType = value.Type & AtkValueType.TypeMask;
+
+        return baseType switch
+        {
+            AtkValueType.Undefined => string.Empty,
+            AtkValueType.Null => string.Empty,
+            AtkValueType.Bool => value.Bool ? "true" : "false",
+            AtkValueType.Int => value.Int.ToString(CultureInfo.InvariantCulture),
+            AtkValueType.Int64 => value.Int64.ToString(CultureInfo.InvariantCulture),
+            AtkValueType.UInt => value.UInt.ToString(CultureInfo.InvariantCulture),
+            AtkValueType.UInt64 => value.UInt64.ToString(CultureInfo.InvariantCulture),
+            AtkValueType.Float => value.Float.ToString("R", CultureInfo.InvariantCulture),
+            AtkValueType.String or AtkValueType.ConstString or AtkValueType.WideString => value.GetValueAsString(),
+            _ => value.GetValueAsString(),
+        };
     }
 
     public void Dispose()
