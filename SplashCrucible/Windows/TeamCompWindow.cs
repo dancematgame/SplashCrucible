@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Numerics;
 using Dalamud.Bindings.ImGui;
 using Dalamud.Interface.Windowing;
@@ -14,19 +15,24 @@ public enum CrucibleMode
     InInstanceUnresolved,
 }
 
+public readonly record struct PetPartyUiEvent(string EventType, int EventParam, uint AtkEventParam, uint NodeId);
+
 public sealed class TeamCompWindow : Window, IDisposable
 {
     public CrucibleMode CurrentMode { get; set; } = CrucibleMode.Unknown;
     public string[] ActiveXbmAddons { get; set; } = Array.Empty<string>();
     public string[] HornNames { get; set; } = { "(unassigned)", "(unassigned)", "(unassigned)" };
     public string[] SquadNames { get; set; } = Array.Empty<string>();
+    public bool TeamCompositionVisible { get; set; }
+
+    private readonly List<PetPartyUiEvent> petPartyUiEvents = new();
 
     public TeamCompWindow()
         : base("Splash Crucible##Main")
     {
         SizeConstraints = new WindowSizeConstraints
         {
-            MinimumSize = new Vector2(560, 280),
+            MinimumSize = new Vector2(560, 360),
             MaximumSize = new Vector2(float.MaxValue, float.MaxValue),
         };
 
@@ -36,6 +42,14 @@ public sealed class TeamCompWindow : Window, IDisposable
 
     public void Dispose()
     {
+    }
+
+    public void AddPetPartyUiEvent(PetPartyUiEvent uiEvent)
+    {
+        petPartyUiEvents.Insert(0, uiEvent);
+
+        if (petPartyUiEvents.Count > 30)
+            petPartyUiEvents.RemoveRange(30, petPartyUiEvents.Count - 30);
     }
 
     public override void Draw()
@@ -64,6 +78,32 @@ public sealed class TeamCompWindow : Window, IDisposable
 
         for (var i = 0; i < 12; i++)
             DrawSquadRow(GetSquadName(i));
+
+        ImGui.Spacing();
+        DrawSectionHeader("Team Composition click diagnostic");
+        ImGui.TextDisabled("Observation only: this section records native XBMPetParty UI events and does not fire callbacks.");
+
+        if (!TeamCompositionVisible)
+            ImGui.TextDisabled("Open Team Composition before testing row clicks.");
+
+        if (ImGui.Button("Clear Events"))
+            petPartyUiEvents.Clear();
+
+        ImGui.SameLine();
+        ImGui.TextUnformatted($"Recorded: {petPartyUiEvents.Count}");
+
+        if (petPartyUiEvents.Count == 0)
+        {
+            ImGui.TextDisabled("Clear events, then manually click one BST row in Team Composition.");
+        }
+        else
+        {
+            foreach (var uiEvent in petPartyUiEvents)
+            {
+                ImGui.BulletText(
+                    $"{uiEvent.EventType} | EventParam={uiEvent.EventParam} | AtkEvent.Param={uiEvent.AtkEventParam} | NodeId={uiEvent.NodeId}");
+            }
+        }
 
         ImGui.Spacing();
         DrawSectionHeader("Active XBM addons");
