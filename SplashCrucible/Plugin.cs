@@ -87,12 +87,8 @@ public sealed class Plugin : IDalamudPlugin
 
     private unsafe string[] ReadPetPartyStringValues()
     {
-        var addonAddress = GameGui.GetAddonByName(TeamCompositionAddonName);
-        if (addonAddress == nint.Zero)
-            return Array.Empty<string>();
-
-        var addon = (AtkUnitBase*)addonAddress;
-        if (addon->AtkValues == null || addon->AtkValuesCount == 0)
+        var addon = GameGui.GetAddonByName<AtkUnitBase>(TeamCompositionAddonName);
+        if (addon == null || addon->AtkValues == null || addon->AtkValuesCount == 0)
             return Array.Empty<string>();
 
         var values = new List<string>();
