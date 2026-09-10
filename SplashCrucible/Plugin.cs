@@ -34,12 +34,14 @@ public sealed class Plugin : IDalamudPlugin
     private readonly HashSet<string> activeXbmAddons = new(StringComparer.Ordinal);
     private string[] cachedHornNames = { "(unassigned)", "(unassigned)", "(unassigned)" };
     private string[] cachedSquadNames = Enumerable.Repeat("(unknown)", PartyRowCount).ToArray();
-    private string[]? pendingClickSnapshot;
-    private bool comparePendingClickOnNextFrame;
 
     public Plugin()
     {
-        mainWindow = new TeamCompWindow();
+        mainWindow = new TeamCompWindow
+        {
+            SquadRowClicked = SelectTeamCompositionRow,
+        };
+
         windowSystem.AddWindow(mainWindow);
         mainWindow.IsOpen = true;
 
@@ -48,7 +50,6 @@ public sealed class Plugin : IDalamudPlugin
 
         AddonLifecycle.RegisterListener(AddonEvent.PostSetup, OnAddonPostSetup);
         AddonLifecycle.RegisterListener(AddonEvent.PreFinalize, OnAddonPreFinalize);
-        AddonLifecycle.RegisterListener(AddonEvent.PreReceiveEvent, TeamCompositionAddonName, OnPetPartyReceiveEvent);
 
         Log.Information("Splash Crucible loaded. XBM state diagnostic enabled.");
     }
@@ -71,81 +72,9 @@ public sealed class Plugin : IDalamudPlugin
         Log.Information("XBM CLOSE: {AddonName}", args.AddonName);
     }
 
-    private unsafe void OnPetPartyReceiveEvent(AddonEvent type, AddonArgs args)
-    {
-        if (args is not AddonReceiveEventArgs receiveArgs)
-            return;
-
-        uint atkEventParam = 0;
-        uint nodeId = 0;
-        nint target = nint.Zero;
-        nint listener = nint.Zero;
-        var eventData = receiveArgs.AtkEventData;
-        var listSelectedIndex = -1;
-        var rendererIndex = -1;
-        var hoveredIndex3 = -1;
-
-        if (receiveArgs.AtkEvent != nint.Zero)
-        {
-            var atkEvent = (AtkEvent*)receiveArgs.AtkEvent;
-            atkEventParam = atkEvent->Param;
-            target = (nint)atkEvent->Target;
-            listener = (nint)atkEvent->Listener;
-
-            if (atkEvent->Node != null)
-                nodeId = atkEvent->Node->NodeId;
-        }
-
-        if (receiveArgs.AtkEventData != nint.Zero)
-        {
-            var data = (AtkEventData*)receiveArgs.AtkEventData;
-            listSelectedIndex = data->ListItemData.SelectedIndex;
-            hoveredIndex3 = data->ListItemData.HoveredItemIndex3;
-
-            if (data->ListItemData.ListItemRenderer != null)
-                rendererIndex = data->ListItemData.ListItemRenderer->ListItemIndex;
-        }
-
-        var diagnostic = new PetPartyUiEvent(
-            receiveArgs.AtkEventType.ToString(),
-            receiveArgs.EventParam,
-            atkEventParam,
-            nodeId,
-            target,
-            listener,
-            eventData,
-            listSelectedIndex,
-            rendererIndex,
-            hoveredIndex3);
-
-        mainWindow.AddPetPartyUiEvent(diagnostic);
-
-        if (string.Equals(diagnostic.EventType, "ListItemClick", StringComparison.Ordinal))
-        {
-            pendingClickSnapshot = CapturePetPartyAtkValues();
-            comparePendingClickOnNextFrame = pendingClickSnapshot != null;
-        }
-
-        Log.Information(
-            "XBMPetParty UI EVENT: Type={EventType}, EventParam={EventParam}, AtkEventParam={AtkEventParam}, NodeId={NodeId}, SelectedIndex={SelectedIndex}, RendererIndex={RendererIndex}, HoveredIndex3={HoveredIndex3}",
-            diagnostic.EventType,
-            diagnostic.EventParam,
-            diagnostic.AtkEventParam,
-            diagnostic.NodeId,
-            diagnostic.ListSelectedIndex,
-            diagnostic.RendererIndex,
-            diagnostic.HoveredIndex3);
-    }
-
     private void OnFrameworkUpdate(IFramework framework)
     {
         mainWindow.IsOpen = true;
-
-        if (comparePendingClickOnNextFrame)
-        {
-            comparePendingClickOnNextFrame = false;
-            ComparePendingClickSnapshot();
-        }
 
         var teamPartyVisible = GameGui.GetAddonByName(TeamCompositionAddonName) != nint.Zero;
         var boardSelectionVisible = GameGui.GetAddonByName(BoardSelectionAddonName) != nint.Zero;
@@ -169,63 +98,50 @@ public sealed class Plugin : IDalamudPlugin
         mainWindow.ActiveXbmAddons = activeXbmAddons.OrderBy(x => x, StringComparer.Ordinal).ToArray();
     }
 
-    private unsafe string[]? CapturePetPartyAtkValues()
+    private unsafe void SelectTeamCompositionRow(int row)
     {
+        if (row < 0 || row >= PartyRowCount)
+            return;
+
         var addon = GameGui.GetAddonByName<AtkUnitBase>(TeamCompositionAddonName);
-        if (addon == null || addon->AtkValues == null || addon->AtkValuesCount == 0)
+        if (addon == null)
+            return;
+
+        var list = FindTeamCompositionList(addon);
+        if (list == null)
+        {
+            Log.Warning("Could not locate the 12-row XBMPetParty list component.");
+            return;
+        }
+
+        // This deliberately drives only the local native Team Composition list.
+        // dispatchEvent=true asks the list to process the selection exactly through its
+        // normal UI event path; no packet/network, command, action, or agent API is used.
+        list->SelectItem(row, true);
+    }
+
+    private static unsafe AtkComponentList* FindTeamCompositionList(AtkUnitBase* addon)
+    {
+        if (addon->UldManager.NodeList == null)
             return null;
 
-        var values = new string[addon->AtkValuesCount];
-        for (var i = 0; i < values.Length; i++)
-            values[i] = FormatAtkValue(addon->AtkValues[i]);
-
-        return values;
-    }
-
-    private void ComparePendingClickSnapshot()
-    {
-        var before = pendingClickSnapshot;
-        pendingClickSnapshot = null;
-        if (before == null)
-            return;
-
-        var after = CapturePetPartyAtkValues();
-        if (after == null)
+        for (var i = 0; i < addon->UldManager.NodeListCount; i++)
         {
-            mainWindow.SetPetPartyAtkValueChanges(new[] { "Team Composition closed before comparison." });
-            return;
+            var node = addon->UldManager.NodeList[i];
+            if (node == null || node->GetNodeType() != NodeType.Component)
+                continue;
+
+            var componentNode = (AtkComponentNode*)node;
+            var component = componentNode->Component;
+            if (component == null || component->GetComponentType() != ComponentType.List)
+                continue;
+
+            var list = (AtkComponentList*)component;
+            if (list->ListLength == PartyRowCount)
+                return list;
         }
 
-        var changes = new List<string>();
-        var count = Math.Min(before.Length, after.Length);
-        for (var i = 0; i < count; i++)
-        {
-            if (!string.Equals(before[i], after[i], StringComparison.Ordinal))
-                changes.Add($"[{i}] {before[i]} -> {after[i]}");
-        }
-
-        if (before.Length != after.Length)
-            changes.Add($"AtkValuesCount {before.Length} -> {after.Length}");
-
-        mainWindow.SetPetPartyAtkValueChanges(changes.Count == 0
-            ? new[] { "No AtkValue changes detected after ListItemClick." }
-            : changes.ToArray());
-    }
-
-    private static string FormatAtkValue(AtkValue value)
-    {
-        var type = value.Type & AtkValueType.TypeMask;
-        return type switch
-        {
-            AtkValueType.Bool => $"Bool:{value.Byte != 0}",
-            AtkValueType.Int => $"Int:{value.Int}",
-            AtkValueType.UInt => $"UInt:{value.UInt}",
-            AtkValueType.Int64 => $"Int64:{value.Int64}",
-            AtkValueType.UInt64 => $"UInt64:{value.UInt64}",
-            AtkValueType.Float => $"Float:{value.Float:R}",
-            AtkValueType.String or AtkValueType.WideString or AtkValueType.ConstString => $"String:{value.GetValueAsString()}",
-            _ => $"Type:{value.Type}",
-        };
+        return null;
     }
 
     private unsafe void TryUpdateCurrentParty()
@@ -275,7 +191,6 @@ public sealed class Plugin : IDalamudPlugin
     {
         AddonLifecycle.UnregisterListener(AddonEvent.PostSetup, OnAddonPostSetup);
         AddonLifecycle.UnregisterListener(AddonEvent.PreFinalize, OnAddonPreFinalize);
-        AddonLifecycle.UnregisterListener(AddonEvent.PreReceiveEvent, TeamCompositionAddonName, OnPetPartyReceiveEvent);
         Framework.Update -= OnFrameworkUpdate;
         PluginInterface.UiBuilder.Draw -= windowSystem.Draw;
         windowSystem.RemoveAllWindows();
