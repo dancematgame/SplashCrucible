@@ -26,8 +26,8 @@ public sealed class TeamCompWindow : Window, IDisposable
     public uint[] SquadMaxHp { get; set; } = Array.Empty<uint>();
     public string TopEnemyWeakness { get; set; } = string.Empty;
     public bool TeamCompositionVisible { get; set; }
-    public bool BoardLayoutVisible { get; set; }
     public bool HasActivePet { get; set; }
+    public bool BoardLayoutVisible { get; set; }
     public Action<int>? SquadRowClicked { get; set; }
     public Action? SummonHorn1Requested { get; set; }
     public Action? CommenceBattleRequested { get; set; }
@@ -79,7 +79,9 @@ public sealed class TeamCompWindow : Window, IDisposable
         if (BoardLayoutVisible)
         {
             ImGui.Spacing();
-            if (ImGui.Button("Commence Battle"))
+            var buttonSize = ImGui.CalcTextSize("Commence Battle") + new Vector2(24f, 10f);
+            ImGui.SetCursorPosX(ImGui.GetCursorPosX() + Math.Max(0f, (ImGui.GetContentRegionAvail().X - buttonSize.X) * 0.5f));
+            if (ImGui.Button("Commence Battle", buttonSize))
                 CommenceBattleRequested?.Invoke();
         }
 
@@ -104,7 +106,9 @@ public sealed class TeamCompWindow : Window, IDisposable
             ImGui.PushStyleColor(ImGuiCol.ButtonActive, new Vector4(0.80f, 0.55f, 0.05f, 1.00f));
         }
 
-        var pressed = ImGui.Button("Summon 1");
+        var buttonSize = ImGui.CalcTextSize("Summon 1") + new Vector2(24f, 10f);
+        ImGui.SetCursorPosX(ImGui.GetCursorPosX() + Math.Max(0f, (ImGui.GetContentRegionAvail().X - buttonSize.X) * 0.5f));
+        var pressed = ImGui.Button("Summon 1", buttonSize);
 
         if (!HasActivePet)
             ImGui.PopStyleColor(3);
