@@ -20,7 +20,6 @@ public sealed class Plugin : IDalamudPlugin
     [PluginService] internal static IFramework Framework { get; private set; } = null!;
     [PluginService] internal static IAddonLifecycle AddonLifecycle { get; private set; } = null!;
     [PluginService] internal static IObjectTable ObjectTable { get; private set; } = null!;
-    [PluginService] internal static IClientState ClientState { get; private set; } = null!;
     [PluginService] internal static IPluginLog Log { get; private set; } = null!;
 
     private const string TeamCompositionAddonName = "XBMPetParty";
@@ -146,7 +145,7 @@ public sealed class Plugin : IDalamudPlugin
 
     private bool HasOwnedSquadPet()
     {
-        var player = ClientState.LocalPlayer;
+        var player = ObjectTable.LocalPlayer;
         if (player == null)
             return false;
 
@@ -175,9 +174,6 @@ public sealed class Plugin : IDalamudPlugin
 
     private void SummonHorn1()
     {
-        // Explicitly user-requested scoped exception to the project's normal local-UI-only rule:
-        // synthesize the user's existing Numpad 6 keybind. No action, command, agent, packet,
-        // or network API is invoked directly by Splash Crucible.
         if (HasOwnedSquadPet())
             return;
 
@@ -196,7 +192,7 @@ public sealed class Plugin : IDalamudPlugin
 
         var value = addon->AtkValues[FirstEnemyWeaknessIndex];
         var type = value.Type & AtkValueType.TypeMask;
-        if (type is not (AtkValueType.String or AtkValueType.String8))
+        if (type is not (AtkValueType.String or AtkValueType.ConstString))
         {
             cachedTopEnemyWeakness = string.Empty;
             return;
