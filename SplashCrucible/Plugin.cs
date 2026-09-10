@@ -114,10 +114,12 @@ public sealed class Plugin : IDalamudPlugin
             return;
         }
 
-        // This deliberately drives only the local native Team Composition list.
-        // dispatchEvent=true asks the list to process the selection exactly through its
-        // normal UI event path; no packet/network, command, action, or agent API is used.
-        list->SelectItem(row, true);
+        // SelectItem(..., true) only changed the list's selection state and did not
+        // reproduce the native row-click behavior in XBMPetParty. We observed that
+        // real row activation arrives as AtkEventType.ListItemClick with the row index
+        // in the list-item event data, so dispatch that exact local list event instead.
+        // This remains entirely inside the native Team Composition UI path.
+        list->DispatchItemEvent(row, AtkEventType.ListItemClick);
     }
 
     private static unsafe AtkComponentList* FindTeamCompositionList(AtkUnitBase* addon)
