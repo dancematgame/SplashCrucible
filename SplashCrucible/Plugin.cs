@@ -29,12 +29,20 @@ public sealed class Plugin : IDalamudPlugin
     private const int PartyRowStride = 77;
     private const int FirstPartyNameIndex = 9;
     private const int FirstPartyAssignmentIndex = 80;
+    private const int FirstEnemyWeaknessIndex = 62;
+
+    private static readonly string[] KnownWeaknesses =
+    {
+        "Fire", "Ice", "Wind", "Earth", "Lightning", "Water",
+        "Unaspected", "Blunt", "Piercing", "Slashing",
+    };
 
     private readonly WindowSystem windowSystem = new("SplashCrucible");
     private readonly TeamCompWindow mainWindow;
     private readonly HashSet<string> activeXbmAddons = new(StringComparer.Ordinal);
     private string[] cachedHornNames = { "(unassigned)", "(unassigned)", "(unassigned)" };
     private string[] cachedSquadNames = Enumerable.Repeat("(unknown)", PartyRowCount).ToArray();
+    private string cachedTopEnemyWeakness = string.Empty;
     private bool syntheticTeamCompositionClick;
 
     public Plugin()
@@ -97,6 +105,7 @@ public sealed class Plugin : IDalamudPlugin
 
         var teamPartyVisible = GameGui.GetAddonByName(TeamCompositionAddonName) != nint.Zero;
         var boardSelectionVisible = GameGui.GetAddonByName(BoardSelectionAddonName) != nint.Zero;
+        var boardLayoutVisible = GameGui.GetAddonByName(BoardLayoutAddonName) != nint.Zero;
         var inInstanceHudVisible = GameGui.GetAddonByName(InInstanceHudAddonName) != nint.Zero;
 
         if (teamPartyVisible && !inInstanceHudVisible)
@@ -111,39 +120,36 @@ public sealed class Plugin : IDalamudPlugin
         if (teamPartyVisible)
             TryUpdateCurrentParty();
 
+        if (boardLayoutVisible)
+            TryUpdateTopEnemyWeakness();
+
         mainWindow.HornNames = cachedHornNames.ToArray();
         mainWindow.SquadNames = cachedSquadNames.ToArray();
+        mainWindow.TopEnemyWeakness = cachedTopEnemyWeakness;
         mainWindow.TeamCompositionVisible = teamPartyVisible;
         mainWindow.ActiveXbmAddons = activeXbmAddons.OrderBy(x => x, StringComparer.Ordinal).ToArray();
-        mainWindow.BoardLayoutAtkValues = ReadBoardLayoutAtkValues();
     }
 
-    private unsafe string[] ReadBoardLayoutAtkValues()
+    private unsafe void TryUpdateTopEnemyWeakness()
     {
         var addon = GameGui.GetAddonByName<AtkUnitBase>(BoardLayoutAddonName);
-        if (addon == null || addon->AtkValues == null)
-            return Array.Empty<string>();
-
-        var values = new List<string>();
-        for (var i = 0; i < addon->AtkValuesCount; i++)
+        if (addon == null || addon->AtkValues == null || addon->AtkValuesCount <= FirstEnemyWeaknessIndex)
         {
-            var value = addon->AtkValues[i];
-            var type = value.Type & AtkValueType.TypeMask;
-            var text = type switch
-            {
-                AtkValueType.String or AtkValueType.String8 => value.GetValueAsString(),
-                AtkValueType.Int => value.Int.ToString(),
-                AtkValueType.UInt => value.UInt.ToString(),
-                AtkValueType.Bool => value.Byte != 0 ? "true" : "false",
-                AtkValueType.Float => value.Float.ToString("0.###"),
-                _ => string.Empty,
-            };
-
-            if (!string.IsNullOrWhiteSpace(text))
-                values.Add($"[{i}] {type}: {text}");
+            cachedTopEnemyWeakness = string.Empty;
+            return;
         }
 
-        return values.ToArray();
+        var value = addon->AtkValues[FirstEnemyWeaknessIndex];
+        var type = value.Type & AtkValueType.TypeMask;
+        if (type is not (AtkValueType.String or AtkValueType.String8))
+        {
+            cachedTopEnemyWeakness = string.Empty;
+            return;
+        }
+
+        var raw = value.GetValueAsString();
+        cachedTopEnemyWeakness = KnownWeaknesses.FirstOrDefault(
+            weakness => raw.Contains(weakness, StringComparison.OrdinalIgnoreCase)) ?? string.Empty;
     }
 
     private unsafe void SelectTeamCompositionRow(int row)
