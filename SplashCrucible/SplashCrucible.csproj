@@ -1,9 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <Project Sdk="Dalamud.NET.Sdk/15.0.0">
   <PropertyGroup>
-    <Version>0.0.1.0</Version>
+    <Version>1.1.3</Version>
     <Author>Splash</Author>
-    <Name>Splash Crucible</Name>
+    <Name>Splash's Crucible Solver</Name>
     <Punchline>Accessibility and information tools for the BST Crucible.</Punchline>
     <Description>Provides additional UI and calculated information for BST Crucible content.</Description>
     <RepoUrl>https://github.com/dancematgame/SplashCrucible</RepoUrl>

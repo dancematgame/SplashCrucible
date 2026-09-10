@@ -4,6 +4,7 @@ using System.Linq;
 using System.Runtime.InteropServices;
 using Dalamud.Game.Addon.Lifecycle;
 using Dalamud.Game.Addon.Lifecycle.AddonArgTypes;
+using Dalamud.Game.Command;
 using Dalamud.IoC;
 using Dalamud.Interface.Windowing;
 using Dalamud.Plugin;
@@ -20,8 +21,10 @@ public sealed class Plugin : IDalamudPlugin
     [PluginService] internal static IFramework Framework { get; private set; } = null!;
     [PluginService] internal static IAddonLifecycle AddonLifecycle { get; private set; } = null!;
     [PluginService] internal static IObjectTable ObjectTable { get; private set; } = null!;
+    [PluginService] internal static ICommandManager CommandManager { get; private set; } = null!;
     [PluginService] internal static IPluginLog Log { get; private set; } = null!;
 
+    private const string CommandName = "/scs";
     private const string TeamCompositionAddonName = "XBMPetParty";
     private const string BoardLayoutAddonName = "XBMStageDetailList";
     private const string InInstanceHudAddonName = "XBMContentsMainHUD";
@@ -82,11 +85,21 @@ public sealed class Plugin : IDalamudPlugin
         PluginInterface.UiBuilder.Draw += windowSystem.Draw;
         Framework.Update += OnFrameworkUpdate;
 
+        CommandManager.AddHandler(CommandName, new CommandInfo(OnCommand)
+        {
+            HelpMessage = "Toggle Splash's Crucible Solver window.",
+        });
+
         AddonLifecycle.RegisterListener(AddonEvent.PostSetup, OnAddonPostSetup);
         AddonLifecycle.RegisterListener(AddonEvent.PreFinalize, OnAddonPreFinalize);
         AddonLifecycle.RegisterListener(AddonEvent.PreReceiveEvent, TeamCompositionAddonName, OnPetPartyReceiveEvent);
 
         Log.Information("Splash Crucible loaded.");
+    }
+
+    private void OnCommand(string command, string arguments)
+    {
+        mainWindow.IsOpen = !mainWindow.IsOpen;
     }
 
     private void OnAddonPostSetup(AddonEvent type, AddonArgs args)
@@ -125,8 +138,6 @@ public sealed class Plugin : IDalamudPlugin
 
     private unsafe void OnFrameworkUpdate(IFramework framework)
     {
-        mainWindow.IsOpen = true;
-
         // Several XBM addons persist after being hidden, so pointer existence alone is not a
         // reliable "window is open" test. Use the native visibility state for actual UI windows.
         var teamPartyVisible = IsAddonVisible(TeamCompositionAddonName);
@@ -536,6 +547,7 @@ public sealed class Plugin : IDalamudPlugin
 
     public void Dispose()
     {
+        CommandManager.RemoveHandler(CommandName);
         AddonLifecycle.UnregisterListener(AddonEvent.PostSetup, OnAddonPostSetup);
         AddonLifecycle.UnregisterListener(AddonEvent.PreFinalize, OnAddonPreFinalize);
         AddonLifecycle.UnregisterListener(AddonEvent.PreReceiveEvent, TeamCompositionAddonName, OnPetPartyReceiveEvent);

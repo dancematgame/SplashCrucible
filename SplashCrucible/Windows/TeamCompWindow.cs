@@ -20,7 +20,14 @@ public enum CrucibleMode
 
 public sealed class TeamCompWindow : Window, IDisposable
 {
-    private const string DisplayVersion = "1.1.2";
+    private static string DisplayVersion
+    {
+        get
+        {
+            var version = typeof(TeamCompWindow).Assembly.GetName().Version;
+            return version is null ? "unknown" : $"{version.Major}.{version.Minor}.{version.Build}";
+        }
+    }
 
     private static readonly string[] KnownXbmAddons =
     {
@@ -50,7 +57,7 @@ public sealed class TeamCompWindow : Window, IDisposable
     public Action? CommenceBattleRequested { get; set; }
 
     public TeamCompWindow()
-        : base("Splash Crucible##Main")
+        : base("Splash's Crucible Solver##Main")
     {
         SizeConstraints = new WindowSizeConstraints
         {
@@ -74,7 +81,7 @@ public sealed class TeamCompWindow : Window, IDisposable
             _ => "Unknown / Idle",
         };
 
-        ImGui.TextUnformatted($"Cruic-able v{DisplayVersion}");
+        ImGui.TextUnformatted($"Splash's Crucible Solver v{DisplayVersion}");
         ImGui.Separator();
         ImGui.TextUnformatted($"Mode: {modeText}");
 
@@ -105,17 +112,6 @@ public sealed class TeamCompWindow : Window, IDisposable
     private unsafe void DrawDebugProbe()
     {
         DrawSectionHeader("Debug");
-
-        var player = Plugin.ObjectTable.LocalPlayer;
-        if (player == null)
-        {
-            ImGui.TextDisabled("Player position: unavailable");
-        }
-        else
-        {
-            var position = player.Position;
-            ImGui.TextUnformatted($"Player position: X {position.X:F2}  Y {position.Y:F2}  Z {position.Z:F2}");
-        }
 
         ImGui.TextUnformatted($"Active squad BST detected: {(HasActivePet ? "YES" : "NO")}");
         ImGui.TextUnformatted($"Top enemy weakness cached: {(string.IsNullOrWhiteSpace(TopEnemyWeakness) ? "(none)" : TopEnemyWeakness)}");
