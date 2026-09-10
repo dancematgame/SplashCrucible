@@ -35,15 +35,25 @@ Current mode targets:
 - The main Splash Crucible window is permanently visible.
 - The current build includes diagnostic support for observing active XBM addons.
 - Earlier semantic mode guesses were intentionally rolled back where evidence showed they were incorrect.
-- The next task is to derive reliable context rules from actual observed UI/game state rather than single-addon guesses.
+- The next mode-detection task is to derive reliable context rules from actual observed UI/game state rather than single-addon guesses.
+- A **Current Party** section has been added for Horn 1 / Horn 2 / Horn 3, but the three assignments are not yet mapped to client data.
+- While `XBMPetParty` is open, the main window now displays its indexed non-empty string `AtkValue` entries. Use this diagnostic to identify which indices contain the BST names assigned to Horn 1, Horn 2 and Horn 3. Once confirmed, wire those exact fields into Current Party and remove the temporary value dump.
 
-## Immediate diagnostic target
+## Immediate diagnostic targets
+
+### Mode detection
 Capture/compare the active XBM addon set in:
 1. Playable map, no Team Composition window open.
 2. Playable map with `XBMPetParty` open for Horn assignment.
 3. Active combat encounter.
 
 If Combat does not expose a unique XBM addon, detect it via another reliable game-state signal.
+
+### Current Party Horn mapping
+1. Open Team Composition with known BST assignments in Horn 1 / Horn 2 / Horn 3.
+2. Record the `XBMPetParty string values` shown in Splash Crucible.
+3. Identify the three indices whose values match the known Horn assignments.
+4. Repeat after changing at least one Horn assignment to confirm the mapping is stable.
 
 ## Local workflow
 Repository: `https://github.com/dancematgame/SplashCrucible`
