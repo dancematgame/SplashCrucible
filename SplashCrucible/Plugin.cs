@@ -33,8 +33,8 @@ public sealed class Plugin : IDalamudPlugin
     private const int FirstPartyAssignmentIndex = 80;
     private const int PartyCurrentHpOffset = 11;
     private const int PartyMaxHpOffset = 12;
+    private const int FirstEnemyNameIndex = 57;
     private const int FirstEnemyWeaknessIndex = 62;
-    private const int CommenceBattleEventParam = 9;
 
     private const byte VkNumpad6 = 0x66;
     private const uint KeyeventfKeyup = 0x0002;
@@ -52,8 +52,10 @@ public sealed class Plugin : IDalamudPlugin
     private string[] cachedSquadNames = Enumerable.Repeat("(unknown)", PartyRowCount).ToArray();
     private uint[] cachedSquadCurrentHp = new uint[PartyRowCount];
     private uint[] cachedSquadMaxHp = new uint[PartyRowCount];
+    private string cachedTopEnemyName = string.Empty;
     private string cachedTopEnemyWeakness = string.Empty;
     private bool syntheticTeamCompositionClick;
+    private bool autoSummonAttemptedForCurrentBoard;
 
     public Plugin()
     {
@@ -81,6 +83,9 @@ public sealed class Plugin : IDalamudPlugin
     {
         if (!args.AddonName.StartsWith("XBM", StringComparison.Ordinal))
             return;
+
+        if (args.AddonName == BoardLayoutAddonName)
+            autoSummonAttemptedForCurrentBoard = false;
 
         activeXbmAddons.Add(args.AddonName);
         Log.Information("XBM OPEN: {AddonName}", args.AddonName);
@@ -133,7 +138,9 @@ public sealed class Plugin : IDalamudPlugin
             TryUpdateCurrentParty();
 
         if (boardLayoutVisible)
-            TryUpdateTopEnemyWeakness();
+            TryUpdateTopEnemyData();
+
+        TryAutoSummonHorn1(inInstanceHudVisible, boardLayoutVisible);
 
         mainWindow.HornNames = cachedHornNames.ToArray();
         mainWindow.SquadNames = cachedSquadNames.ToArray();
@@ -141,8 +148,8 @@ public sealed class Plugin : IDalamudPlugin
         mainWindow.SquadMaxHp = cachedSquadMaxHp.ToArray();
         mainWindow.TopEnemyWeakness = cachedTopEnemyWeakness;
         mainWindow.TeamCompositionVisible = teamPartyVisible;
-        mainWindow.BoardLayoutVisible = boardLayoutVisible;
         mainWindow.HasActivePet = HasOwnedSquadPet();
+        mainWindow.BoardLayoutVisible = boardLayoutVisible;
         mainWindow.ActiveXbmAddons = activeXbmAddons.OrderBy(x => x, StringComparer.Ordinal).ToArray();
     }
 
@@ -175,11 +182,54 @@ public sealed class Plugin : IDalamudPlugin
         return false;
     }
 
+    private bool IsCachedTopEnemyPresent()
+    {
+        if (string.IsNullOrWhiteSpace(cachedTopEnemyName))
+            return false;
+
+        foreach (var gameObject in ObjectTable)
+        {
+            if (gameObject == null || !gameObject.IsTargetable)
+                continue;
+
+            if (string.Equals(gameObject.Name.TextValue, cachedTopEnemyName, StringComparison.OrdinalIgnoreCase))
+                return true;
+        }
+
+        return false;
+    }
+
+    private void TryAutoSummonHorn1(bool inInstanceHudVisible, bool boardLayoutVisible)
+    {
+        if (autoSummonAttemptedForCurrentBoard || !inInstanceHudVisible || boardLayoutVisible)
+            return;
+
+        if (!IsCachedTopEnemyPresent())
+            return;
+
+        // The cached top enemy came from the Board Layout for this board and is now a
+        // targetable object in the local object table. Treat that as the arena-arrival signal.
+        // Only attempt the summon once for this Board Layout so a dead/despawned BST does not
+        // cause repeated Numpad 6 presses during the same encounter.
+        autoSummonAttemptedForCurrentBoard = true;
+
+        if (HasOwnedSquadPet())
+            return;
+
+        Log.Information("Top Board Layout enemy {EnemyName} is present with no active BST; auto-summoning Horn 1.", cachedTopEnemyName);
+        SendNumpad6();
+    }
+
     private void SummonHorn1()
     {
         if (HasOwnedSquadPet())
             return;
 
+        SendNumpad6();
+    }
+
+    private static void SendNumpad6()
+    {
         keybd_event(VkNumpad6, 0, 0, UIntPtr.Zero);
         keybd_event(VkNumpad6, 0, KeyeventfKeyup, UIntPtr.Zero);
     }
@@ -190,29 +240,40 @@ public sealed class Plugin : IDalamudPlugin
         if (addon == null)
             return;
 
-        // Native observation: pressing Commence Battle sends ButtonClick with EventParam=9
-        // to XBMStageDetailList. Reproduce that same addon-local receive-event path.
-        ((AtkEventListener*)addon)->ReceiveEvent(AtkEventType.ButtonClick, CommenceBattleEventParam, null, null);
+        // Native observation: Commence Battle arrives at XBMStageDetailList as
+        // ButtonClick with EventParam=9. Reproduce that exact addon ReceiveEvent path.
+        addon->AtkEventListener.ReceiveEvent(AtkEventType.ButtonClick, 9, null, null);
     }
 
-    private unsafe void TryUpdateTopEnemyWeakness()
+    private unsafe void TryUpdateTopEnemyData()
     {
         var addon = GameGui.GetAddonByName<AtkUnitBase>(BoardLayoutAddonName);
-        if (addon == null || addon->AtkValues == null || addon->AtkValuesCount <= FirstEnemyWeaknessIndex)
+        if (addon == null || addon->AtkValues == null ||
+            addon->AtkValuesCount <= FirstEnemyWeaknessIndex)
+        {
+            cachedTopEnemyName = string.Empty;
+            cachedTopEnemyWeakness = string.Empty;
+            return;
+        }
+
+        var nameValue = addon->AtkValues[FirstEnemyNameIndex];
+        var nameType = nameValue.Type & AtkValueType.TypeMask;
+        if (nameType is AtkValueType.String or AtkValueType.ConstString)
+        {
+            var name = nameValue.GetValueAsString();
+            if (!string.IsNullOrWhiteSpace(name))
+                cachedTopEnemyName = name.Trim();
+        }
+
+        var weaknessValue = addon->AtkValues[FirstEnemyWeaknessIndex];
+        var weaknessType = weaknessValue.Type & AtkValueType.TypeMask;
+        if (weaknessType is not (AtkValueType.String or AtkValueType.ConstString))
         {
             cachedTopEnemyWeakness = string.Empty;
             return;
         }
 
-        var value = addon->AtkValues[FirstEnemyWeaknessIndex];
-        var type = value.Type & AtkValueType.TypeMask;
-        if (type is not (AtkValueType.String or AtkValueType.ConstString))
-        {
-            cachedTopEnemyWeakness = string.Empty;
-            return;
-        }
-
-        var raw = value.GetValueAsString();
+        var raw = weaknessValue.GetValueAsString();
         cachedTopEnemyWeakness = KnownWeaknesses.FirstOrDefault(
             weakness => raw.Contains(weakness, StringComparison.OrdinalIgnoreCase)) ?? string.Empty;
     }
