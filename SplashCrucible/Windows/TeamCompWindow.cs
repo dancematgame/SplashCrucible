@@ -15,7 +15,14 @@ public enum CrucibleMode
     InInstanceUnresolved,
 }
 
-public readonly record struct PetPartyUiEvent(string EventType, int EventParam, uint AtkEventParam, uint NodeId);
+public readonly record struct PetPartyUiEvent(
+    string EventType,
+    int EventParam,
+    uint AtkEventParam,
+    uint NodeId,
+    nint Target,
+    nint Listener,
+    nint EventData);
 
 public sealed class TeamCompWindow : Window, IDisposable
 {
@@ -116,7 +123,7 @@ public sealed class TeamCompWindow : Window, IDisposable
             foreach (var uiEvent in petPartyUiEvents)
             {
                 ImGui.BulletText(
-                    $"{uiEvent.EventType} | EventParam={uiEvent.EventParam} | AtkEvent.Param={uiEvent.AtkEventParam} | NodeId={uiEvent.NodeId}");
+                    $"{uiEvent.EventType} | EP={uiEvent.EventParam} | AP={uiEvent.AtkEventParam} | Node={uiEvent.NodeId} | Target=0x{uiEvent.Target:X} | Listener=0x{uiEvent.Listener:X} | Data=0x{uiEvent.EventData:X}");
             }
         }
 
