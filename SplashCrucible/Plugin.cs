@@ -32,6 +32,8 @@ public sealed class Plugin : IDalamudPlugin
     private const int PartyRowStride = 77;
     private const int FirstPartyNameIndex = 9;
     private const int FirstPartyAssignmentIndex = 80;
+    private const int PartyCurrentHpOffset = 11;
+    private const int PartyMaxHpOffset = 12;
     private const int FirstEnemyWeaknessIndex = 62;
 
     private const byte VkNumpad6 = 0x66;
@@ -48,6 +50,8 @@ public sealed class Plugin : IDalamudPlugin
     private readonly HashSet<string> activeXbmAddons = new(StringComparer.Ordinal);
     private string[] cachedHornNames = { "(unassigned)", "(unassigned)", "(unassigned)" };
     private string[] cachedSquadNames = Enumerable.Repeat("(unknown)", PartyRowCount).ToArray();
+    private uint[] cachedSquadCurrentHp = new uint[PartyRowCount];
+    private uint[] cachedSquadMaxHp = new uint[PartyRowCount];
     private string cachedTopEnemyWeakness = string.Empty;
     private bool syntheticTeamCompositionClick;
 
@@ -132,11 +136,12 @@ public sealed class Plugin : IDalamudPlugin
 
         mainWindow.HornNames = cachedHornNames.ToArray();
         mainWindow.SquadNames = cachedSquadNames.ToArray();
+        mainWindow.SquadCurrentHp = cachedSquadCurrentHp.ToArray();
+        mainWindow.SquadMaxHp = cachedSquadMaxHp.ToArray();
         mainWindow.TopEnemyWeakness = cachedTopEnemyWeakness;
         mainWindow.TeamCompositionVisible = teamPartyVisible;
         mainWindow.HasActivePet = HasOwnedSquadPet();
         mainWindow.ActiveXbmAddons = activeXbmAddons.OrderBy(x => x, StringComparer.Ordinal).ToArray();
-        mainWindow.TeamCompositionRowDiagnostic = teamPartyVisible ? ReadTeamCompositionRowDiagnostic() : Array.Empty<string>();
     }
 
     private bool HasOwnedSquadPet()
@@ -202,45 +207,6 @@ public sealed class Plugin : IDalamudPlugin
             weakness => raw.Contains(weakness, StringComparison.OrdinalIgnoreCase)) ?? string.Empty;
     }
 
-    private unsafe string[] ReadTeamCompositionRowDiagnostic()
-    {
-        var addon = GameGui.GetAddonByName<AtkUnitBase>(TeamCompositionAddonName);
-        if (addon == null || addon->AtkValues == null)
-            return Array.Empty<string>();
-
-        var row = Array.FindIndex(cachedSquadNames,
-            name => string.Equals(name, "Treant", StringComparison.OrdinalIgnoreCase));
-        if (row < 0)
-            row = Array.FindIndex(cachedSquadNames,
-                name => !string.IsNullOrWhiteSpace(name) && name != "(unknown)");
-        if (row < 0)
-            return Array.Empty<string>();
-
-        var start = row * PartyRowStride;
-        var end = Math.Min(start + PartyRowStride - 1, addon->AtkValuesCount - 1);
-        var values = new List<string> { $"BST: {cachedSquadNames[row]} | row {row} | AtkValues {start}-{end}" };
-
-        for (var i = start; i <= end; i++)
-        {
-            var value = addon->AtkValues[i];
-            var type = value.Type & AtkValueType.TypeMask;
-            string? text = type switch
-            {
-                AtkValueType.String or AtkValueType.String8 => value.GetValueAsString(),
-                AtkValueType.Int when value.Int != 0 => value.Int.ToString(),
-                AtkValueType.UInt when value.UInt != 0 => value.UInt.ToString(),
-                AtkValueType.Bool when value.Byte != 0 => "true",
-                AtkValueType.Float when Math.Abs(value.Float) > 0.0001f => value.Float.ToString("0.###"),
-                _ => null,
-            };
-
-            if (!string.IsNullOrWhiteSpace(text))
-                values.Add($"[{i}] +{i - start} {type}: {text}");
-        }
-
-        return values.ToArray();
-    }
-
     private unsafe void SelectTeamCompositionRow(int row)
     {
         if (row < 0 || row >= PartyRowCount)
@@ -304,17 +270,22 @@ public sealed class Plugin : IDalamudPlugin
 
         var horns = new[] { "(unassigned)", "(unassigned)", "(unassigned)" };
         var squad = new string[PartyRowCount];
+        var currentHp = new uint[PartyRowCount];
+        var maxHp = new uint[PartyRowCount];
 
         for (var row = 0; row < PartyRowCount; row++)
         {
-            var nameIndex = FirstPartyNameIndex + (row * PartyRowStride);
-            var assignmentIndex = FirstPartyAssignmentIndex + (row * PartyRowStride);
+            var rowStart = row * PartyRowStride;
+            var nameIndex = FirstPartyNameIndex + rowStart;
+            var assignmentIndex = FirstPartyAssignmentIndex + rowStart;
 
             var nameValue = addon->AtkValues[nameIndex];
             var assignmentValue = addon->AtkValues[assignmentIndex];
 
             var name = nameValue.GetValueAsString();
             squad[row] = string.IsNullOrWhiteSpace(name) ? "(unknown)" : name;
+            currentHp[row] = ReadUnsignedValue(addon->AtkValues[rowStart + PartyCurrentHpOffset]);
+            maxHp[row] = ReadUnsignedValue(addon->AtkValues[rowStart + PartyMaxHpOffset]);
 
             if (string.IsNullOrWhiteSpace(name))
                 continue;
@@ -333,6 +304,19 @@ public sealed class Plugin : IDalamudPlugin
 
         cachedHornNames = horns;
         cachedSquadNames = squad;
+        cachedSquadCurrentHp = currentHp;
+        cachedSquadMaxHp = maxHp;
+    }
+
+    private static uint ReadUnsignedValue(AtkValue value)
+    {
+        var type = value.Type & AtkValueType.TypeMask;
+        return type switch
+        {
+            AtkValueType.UInt => value.UInt,
+            AtkValueType.Int when value.Int >= 0 => (uint)value.Int,
+            _ => 0,
+        };
     }
 
     public void Dispose()
