@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Generic;
 using System.Numerics;
 using Dalamud.Bindings.ImGui;
 using Dalamud.Interface.Windowing;
@@ -15,18 +14,6 @@ public enum CrucibleMode
     InInstanceUnresolved,
 }
 
-public readonly record struct PetPartyUiEvent(
-    string EventType,
-    int EventParam,
-    uint AtkEventParam,
-    uint NodeId,
-    nint Target,
-    nint Listener,
-    nint EventData,
-    int ListSelectedIndex,
-    int RendererIndex,
-    int HoveredIndex3);
-
 public sealed class TeamCompWindow : Window, IDisposable
 {
     public CrucibleMode CurrentMode { get; set; } = CrucibleMode.Unknown;
@@ -34,9 +21,7 @@ public sealed class TeamCompWindow : Window, IDisposable
     public string[] HornNames { get; set; } = { "(unassigned)", "(unassigned)", "(unassigned)" };
     public string[] SquadNames { get; set; } = Array.Empty<string>();
     public bool TeamCompositionVisible { get; set; }
-
-    private readonly List<PetPartyUiEvent> petPartyUiEvents = new();
-    private string[] petPartyAtkValueChanges = Array.Empty<string>();
+    public Action<int>? SquadRowClicked { get; set; }
 
     public TeamCompWindow()
         : base("Splash Crucible##Main")
@@ -54,17 +39,6 @@ public sealed class TeamCompWindow : Window, IDisposable
     public void Dispose()
     {
     }
-
-    public void AddPetPartyUiEvent(PetPartyUiEvent uiEvent)
-    {
-        petPartyUiEvents.Insert(0, uiEvent);
-
-        if (petPartyUiEvents.Count > 30)
-            petPartyUiEvents.RemoveRange(30, petPartyUiEvents.Count - 30);
-    }
-
-    public void SetPetPartyAtkValueChanges(string[] changes)
-        => petPartyAtkValueChanges = changes;
 
     public override void Draw()
     {
@@ -91,45 +65,10 @@ public sealed class TeamCompWindow : Window, IDisposable
         DrawSquadHeader();
 
         for (var i = 0; i < 12; i++)
-            DrawSquadRow(GetSquadName(i));
-
-        ImGui.Spacing();
-        DrawSectionHeader("Team Composition click diagnostic");
-        ImGui.TextDisabled("Observation only: records native XBMPetParty events and list-item data; does not fire callbacks.");
+            DrawSquadRow(i, GetSquadName(i));
 
         if (!TeamCompositionVisible)
-            ImGui.TextDisabled("Open Team Composition before testing row clicks.");
-
-        if (ImGui.Button("Clear Events"))
-        {
-            petPartyUiEvents.Clear();
-            petPartyAtkValueChanges = Array.Empty<string>();
-        }
-
-        ImGui.SameLine();
-        ImGui.TextUnformatted($"Recorded: {petPartyUiEvents.Count}");
-
-        if (petPartyAtkValueChanges.Length > 0)
-        {
-            ImGui.TextUnformatted("AtkValue changes after latest ListItemClick:");
-            foreach (var change in petPartyAtkValueChanges)
-                ImGui.BulletText(change);
-        }
-        else
-        {
-            ImGui.TextDisabled("No click comparison recorded yet.");
-        }
-
-        if (petPartyUiEvents.Count > 0)
-        {
-            ImGui.TextUnformatted("Recent native UI events:");
-            foreach (var uiEvent in petPartyUiEvents)
-            {
-                ImGui.BulletText($"{uiEvent.EventType} | EP={uiEvent.EventParam} | AP={uiEvent.AtkEventParam} | Node={uiEvent.NodeId}");
-                ImGui.TextDisabled($"  List SelectedIndex={uiEvent.ListSelectedIndex} | RendererIndex={uiEvent.RendererIndex} | HoveredIndex3={uiEvent.HoveredIndex3}");
-                ImGui.TextDisabled($"  Target=0x{uiEvent.Target:X} | Listener=0x{uiEvent.Listener:X} | Data=0x{uiEvent.EventData:X}");
-            }
-        }
+            ImGui.TextDisabled("Open Team Composition to select a BST from Current Squad.");
 
         ImGui.Spacing();
         DrawSectionHeader("Active XBM addons");
@@ -159,9 +98,19 @@ public sealed class TeamCompWindow : Window, IDisposable
         ImGui.TextDisabled("Tempered Release Type");
     }
 
-    private static void DrawSquadRow(string name)
+    private void DrawSquadRow(int index, string name)
     {
         var startX = ImGui.GetCursorPosX();
+        var rowY = ImGui.GetCursorPosY();
+        var rowHeight = ImGui.GetTextLineHeight();
+        var rowWidth = ImGui.GetContentRegionAvail().X;
+
+        ImGui.InvisibleButton($"##SquadRow{index}", new Vector2(rowWidth, rowHeight));
+        var clicked = ImGui.IsItemClicked();
+        var afterRowY = ImGui.GetCursorPosY();
+
+        ImGui.SetCursorPosY(rowY);
+        ImGui.SetCursorPosX(startX);
         ImGui.TextUnformatted(name);
 
         if (!PetMetadata.TryGet(name, out var metadata))
@@ -175,20 +124,26 @@ public sealed class TeamCompWindow : Window, IDisposable
             ImGui.SameLine();
             ImGui.SetCursorPosX(startX + 365f);
             ImGui.TextDisabled("—");
-            return;
+        }
+        else
+        {
+            ImGui.SameLine();
+            ImGui.SetCursorPosX(startX + 170f);
+            ImGui.TextColored(GetColour(metadata.Colour), "●");
+
+            ImGui.SameLine();
+            ImGui.SetCursorPosX(startX + 235f);
+            ImGui.TextUnformatted(DisplayOrDash(metadata.BorrowType));
+
+            ImGui.SameLine();
+            ImGui.SetCursorPosX(startX + 365f);
+            ImGui.TextUnformatted(DisplayOrDash(metadata.TemperedReleaseType));
         }
 
-        ImGui.SameLine();
-        ImGui.SetCursorPosX(startX + 170f);
-        ImGui.TextColored(GetColour(metadata.Colour), "●");
+        ImGui.SetCursorPosY(afterRowY);
 
-        ImGui.SameLine();
-        ImGui.SetCursorPosX(startX + 235f);
-        ImGui.TextUnformatted(DisplayOrDash(metadata.BorrowType));
-
-        ImGui.SameLine();
-        ImGui.SetCursorPosX(startX + 365f);
-        ImGui.TextUnformatted(DisplayOrDash(metadata.TemperedReleaseType));
+        if (clicked && TeamCompositionVisible)
+            SquadRowClicked?.Invoke(index);
     }
 
     private static Vector4 GetColour(string colour)
