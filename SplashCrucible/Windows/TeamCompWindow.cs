@@ -120,6 +120,9 @@ public sealed class TeamCompWindow : Window, IDisposable
             ImGui.SetCursorPosX(startX + 170f);
             DrawDisabledText("●", bold);
             ImGui.SameLine();
+            ImGui.SetCursorPosX(startX + 195f);
+            DrawDisabledText("?", bold);
+            ImGui.SameLine();
             ImGui.SetCursorPosX(startX + 235f);
             DrawDisabledText("—", bold);
             ImGui.SameLine();
@@ -133,12 +136,39 @@ public sealed class TeamCompWindow : Window, IDisposable
         DrawColoredText(GetColour(metadata.Colour), "●", bold);
 
         ImGui.SameLine();
+        ImGui.SetCursorPosX(startX + 195f);
+        DrawAspectIcon(metadata.Aspect, bold);
+
+        ImGui.SameLine();
         ImGui.SetCursorPosX(startX + 235f);
         DrawText(DisplayOrDash(metadata.BorrowType), bold);
 
         ImGui.SameLine();
         ImGui.SetCursorPosX(startX + 365f);
         DrawText(DisplayOrDash(metadata.TemperedReleaseType), bold);
+    }
+
+    private static void DrawAspectIcon(string aspect, bool bold)
+    {
+        var (icon, colour) = aspect switch
+        {
+            "Fire" => ("▲", new Vector4(1.00f, 0.45f, 0.20f, 1.00f)),
+            "Ice" => ("❄", new Vector4(0.55f, 0.85f, 1.00f, 1.00f)),
+            "Lightning" => ("ϟ", new Vector4(0.80f, 0.60f, 1.00f, 1.00f)),
+            "Wind" => ("≈", new Vector4(0.45f, 0.90f, 0.55f, 1.00f)),
+            "Water" => ("▼", new Vector4(0.35f, 0.65f, 1.00f, 1.00f)),
+            "Earth" => ("◆", new Vector4(0.85f, 0.65f, 0.30f, 1.00f)),
+            "Slashing" => ("╱", new Vector4(0.90f, 0.90f, 0.90f, 1.00f)),
+            "Piercing" => ("→", new Vector4(0.90f, 0.90f, 0.90f, 1.00f)),
+            "Blunt" => ("■", new Vector4(0.90f, 0.90f, 0.90f, 1.00f)),
+            "Unaspected" => ("○", new Vector4(0.70f, 0.70f, 0.70f, 1.00f)),
+            _ => ("?", new Vector4(0.65f, 0.65f, 0.65f, 1.00f)),
+        };
+
+        DrawColoredText(colour, icon, bold);
+
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip($"Auto-attack: {aspect}");
     }
 
     private static void DrawText(string text, bool bold)
