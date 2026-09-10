@@ -46,6 +46,7 @@ public sealed class Plugin : IDalamudPlugin
 
         AddonLifecycle.RegisterListener(AddonEvent.PostSetup, OnAddonPostSetup);
         AddonLifecycle.RegisterListener(AddonEvent.PreFinalize, OnAddonPreFinalize);
+        AddonLifecycle.RegisterListener(AddonEvent.PreReceiveEvent, TeamCompositionAddonName, OnPetPartyReceiveEvent);
 
         Log.Information("Splash Crucible loaded. XBM state diagnostic enabled.");
     }
@@ -66,6 +67,38 @@ public sealed class Plugin : IDalamudPlugin
 
         activeXbmAddons.Remove(args.AddonName);
         Log.Information("XBM CLOSE: {AddonName}", args.AddonName);
+    }
+
+    private unsafe void OnPetPartyReceiveEvent(AddonEvent type, AddonArgs args)
+    {
+        if (args is not AddonReceiveEventArgs receiveArgs)
+            return;
+
+        uint atkEventParam = 0;
+        uint nodeId = 0;
+
+        if (receiveArgs.AtkEvent != nint.Zero)
+        {
+            var atkEvent = (AtkEvent*)receiveArgs.AtkEvent;
+            atkEventParam = atkEvent->Param;
+
+            if (atkEvent->Node != null)
+                nodeId = atkEvent->Node->NodeId;
+        }
+
+        var diagnostic = new PetPartyUiEvent(
+            receiveArgs.AtkEventType.ToString(),
+            receiveArgs.EventParam,
+            atkEventParam,
+            nodeId);
+
+        mainWindow.AddPetPartyUiEvent(diagnostic);
+        Log.Information(
+            "XBMPetParty UI EVENT: Type={EventType}, EventParam={EventParam}, AtkEventParam={AtkEventParam}, NodeId={NodeId}",
+            diagnostic.EventType,
+            diagnostic.EventParam,
+            diagnostic.AtkEventParam,
+            diagnostic.NodeId);
     }
 
     private void OnFrameworkUpdate(IFramework framework)
@@ -93,6 +126,7 @@ public sealed class Plugin : IDalamudPlugin
 
         mainWindow.HornNames = cachedHornNames.ToArray();
         mainWindow.SquadNames = cachedSquadNames.ToArray();
+        mainWindow.TeamCompositionVisible = teamPartyVisible;
         mainWindow.ActiveXbmAddons = activeXbmAddons.OrderBy(x => x, StringComparer.Ordinal).ToArray();
     }
 
@@ -143,6 +177,7 @@ public sealed class Plugin : IDalamudPlugin
     {
         AddonLifecycle.UnregisterListener(AddonEvent.PostSetup, OnAddonPostSetup);
         AddonLifecycle.UnregisterListener(AddonEvent.PreFinalize, OnAddonPreFinalize);
+        AddonLifecycle.UnregisterListener(AddonEvent.PreReceiveEvent, TeamCompositionAddonName, OnPetPartyReceiveEvent);
         Framework.Update -= OnFrameworkUpdate;
         PluginInterface.UiBuilder.Draw -= windowSystem.Draw;
         windowSystem.RemoveAllWindows();
