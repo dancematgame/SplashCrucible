@@ -53,7 +53,7 @@ public sealed class Plugin : IDalamudPlugin
         AddonLifecycle.RegisterListener(AddonEvent.PreFinalize, OnAddonPreFinalize);
         AddonLifecycle.RegisterListener(AddonEvent.PreReceiveEvent, TeamCompositionAddonName, OnPetPartyReceiveEvent);
 
-        Log.Information("Splash Crucible loaded. Team Composition left-click test enabled.");
+        Log.Information("Splash Crucible loaded.");
     }
 
     private void OnAddonPostSetup(AddonEvent type, AddonArgs args)
@@ -76,7 +76,9 @@ public sealed class Plugin : IDalamudPlugin
 
     private unsafe void OnPetPartyReceiveEvent(AddonEvent type, AddonArgs args)
     {
-        if (args is not AddonReceiveEventArgs receiveArgs || receiveArgs.AtkEventData == nint.Zero)
+        if (!syntheticTeamCompositionClick ||
+            args is not AddonReceiveEventArgs receiveArgs ||
+            receiveArgs.AtkEventData == nint.Zero)
             return;
 
         var eventType = (AtkEventType)receiveArgs.AtkEventType;
@@ -85,39 +87,12 @@ public sealed class Plugin : IDalamudPlugin
 
         var data = (AtkEventData*)receiveArgs.AtkEventData;
 
-        // DispatchItemEvent creates the native local list event, but its generated
-        // mouse-button context is not reliable. Native diagnostics established that
-        // MouseButtonId 0 is left-click and 1 is right-click. While (and only while)
-        // Splash is synchronously dispatching its own list click, normalize the event
-        // data to the exact observed unmodified left-click context before XBMPetParty
-        // receives it.
-        if (syntheticTeamCompositionClick)
-        {
-            data->ListItemData.MouseButtonId = 0;
-            data->ListItemData.MouseModifier = default;
-        }
-
-        var listData = data->ListItemData;
-        var rendererIndex = listData.ListItemRenderer != null
-            ? listData.ListItemRenderer->ListItemIndex
-            : -1;
-
-        var click = new PetPartyClickEvent(
-            listData.SelectedIndex,
-            rendererIndex,
-            listData.MouseButtonId,
-            listData.MouseModifier.ToString(),
-            syntheticTeamCompositionClick);
-
-        mainWindow.AddPetPartyClickEvent(click);
-
-        Log.Information(
-            "XBMPetParty ListItemClick: SelectedIndex={SelectedIndex}, RendererIndex={RendererIndex}, MouseButtonId={MouseButtonId}, MouseModifier={MouseModifier}, Synthetic={Synthetic}",
-            click.SelectedIndex,
-            click.RendererIndex,
-            click.MouseButtonId,
-            click.MouseModifier,
-            click.Synthetic);
+        // Native diagnostics established that MouseButtonId 0 with no modifier is
+        // the normal left-click path. DispatchItemEvent does not carry explicit mouse
+        // context, so normalize only Splash's synchronous synthetic list clicks before
+        // XBMPetParty receives them.
+        data->ListItemData.MouseButtonId = 0;
+        data->ListItemData.MouseModifier = default;
     }
 
     private void OnFrameworkUpdate(IFramework framework)
