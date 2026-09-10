@@ -25,7 +25,9 @@ public sealed class TeamCompWindow : Window, IDisposable
     public string[] TeamCompositionRowDiagnostic { get; set; } = Array.Empty<string>();
     public string TopEnemyWeakness { get; set; } = string.Empty;
     public bool TeamCompositionVisible { get; set; }
+    public bool HasActivePet { get; set; }
     public Action<int>? SquadRowClicked { get; set; }
+    public Action? SummonHorn1Requested { get; set; }
 
     public TeamCompWindow()
         : base("Splash Crucible##Main")
@@ -61,6 +63,7 @@ public sealed class TeamCompWindow : Window, IDisposable
         DrawPartyRow(0);
         DrawPartyRow(1);
         DrawPartyRow(2);
+        DrawSummonButton();
 
         ImGui.Spacing();
         DrawSectionHeader("Squad");
@@ -90,6 +93,27 @@ public sealed class TeamCompWindow : Window, IDisposable
 
         foreach (var addonName in ActiveXbmAddons)
             ImGui.BulletText(addonName);
+    }
+
+    private void DrawSummonButton()
+    {
+        if (!HasActivePet)
+        {
+            ImGui.PushStyleColor(ImGuiCol.Button, new Vector4(0.90f, 0.68f, 0.10f, 1.00f));
+            ImGui.PushStyleColor(ImGuiCol.ButtonHovered, new Vector4(1.00f, 0.80f, 0.18f, 1.00f));
+            ImGui.PushStyleColor(ImGuiCol.ButtonActive, new Vector4(0.80f, 0.55f, 0.05f, 1.00f));
+        }
+
+        var pressed = ImGui.Button("Summon 1");
+
+        if (!HasActivePet)
+            ImGui.PopStyleColor(3);
+
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip(HasActivePet ? "A squad BST is currently active." : "No active squad BST detected. Sends Numpad 6.");
+
+        if (pressed && !HasActivePet)
+            SummonHorn1Requested?.Invoke();
     }
 
     private void DrawPartyRow(int hornIndex)
