@@ -1,6 +1,6 @@
 # Splash Crucible
 
-Personal-use Dalamud plugin providing accessibility-oriented UI and calculated information for Final Fantasy XIV Beastmaster Crucible content.
+Personal-use Dalamud plugin providing accessibility-oriented UI and calculated information for BST Crucible content.
 
 ## Build
 
