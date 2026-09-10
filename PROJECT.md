@@ -33,7 +33,7 @@ Current mode targets:
 - `XBMPetParty` appears both during outside-instance Team Selection and on the playable map when assigning BSTs to Horns, so it is not a unique mode marker.
 - `XBMStageMap` is the Board Selection graphic, not the playable map.
 - `XBMStageList` is the Board Selection list.
-- `XBMContentsMainHUD` is present on the playable map and therefore must not be treated as a Combat-only marker.
+- `XBMContentsMainHUD` is present on the playable Crucible map and therefore must not be treated as a Combat-only marker.
 - `XBMStageDetailList` is the Board Layout window.
 - `XBMPetParty` exposes the displayed 12-BST list through repeated `AtkValue` row blocks.
 - Each displayed BST row uses a stride of 77 `AtkValue` entries.
@@ -50,6 +50,7 @@ Current mode targets:
 - Party rows use the same native list-click path: clicking an assigned BST in Party looks up its zero-based Squad row and dispatches that same local left-click, so it removes/toggles the assignment exactly as clicking that BST in Squad does.
 - Board Layout enemy data uses a confirmed 40-AtkValue stride. First enemy name is `[57]`, first enemy weakness label is `[61]`, and first enemy weakness value is `[62]`. Second enemy equivalents were observed at `[97]`, `[101]`, and `[102]`.
 - For current gameplay, only the **top enemy** drives weakness highlighting. Multi-enemy stride information is retained for future extension.
+- Native `Commence Battle` observation on `XBMStageDetailList` produced `ButtonClick | EventParam=9`; Splash reproduces that local addon ReceiveEvent path from its own button.
 - See `XBM_UI_MAP.md` for the current full mapping table and confidence notes.
 
 ## BST metadata
@@ -78,29 +79,22 @@ Colour is rendered as a coloured circle; Borrow Type and Tempered Release Type a
 - The most recently read Horn assignments, squad list, and HP values are cached in plugin memory so they remain visible after the native Team Composition window closes.
 - Squad rows are clickable while Team Composition is open and reproduce the native left-click row activation path.
 - Assigned Party rows are also clickable while Team Composition is open and route through the matching Squad row, so they can remove/toggle that assignment through the same validated native UI path.
-- While `XBMStageDetailList` is visible, Splash reads the top enemy weakness from AtkValue `[62]`, extracts the known weakness name, and caches it for the current encounter.
+- While `XBMStageDetailList` is visible, Splash reads and caches the top enemy name from AtkValue `[57]` and its weakness from `[62]`.
 - Any Party or Squad BST whose auto-attack Aspect matches the cached top-enemy weakness gets a visible highlight around its Aspect icon.
-- `Summon 1` appears under Party. Splash checks the local object table for an owned active BST whose name matches the cached Squad. When no active BST is detected, the button is highlighted; pressing it synthesizes the user's existing Numpad 6 bind. When a BST is already active, the button is not highlighted and does nothing.
-- A temporary `XBMStageDetailList` **Board Layout event diagnostic** is enabled to identify the native `Commence Battle` button event before reproducing it in Splash. It records the latest 12 receive events as `AtkEventType | EventParam` and retains them after the Board Layout closes so the native click can be inspected.
-- The user has explicitly requested a future scoped exception allowing a Splash `Commence Battle` button to reproduce the native Board Layout button. Because that action starts an encounter and may cause normal server-bound game behavior, the exact native UI event is being observed first rather than guessed.
-- The next mode-detection task is to distinguish playable Map from active Combat using reliable observed state rather than a guessed single-addon marker.
+- `Summon 1` appears centered under Party. Splash checks the local object table for an owned active BST whose name matches the cached Squad. When no active BST is detected, the button is highlighted; pressing it synthesizes the user's existing Numpad 6 bind. When a BST is already active, the button is not highlighted and does nothing.
+- Arena-entry auto-summon is now implemented using the cached Board Layout enemy rather than a fight-start signal. When a Board Layout opens, the one-shot summon gate is reset. After that Board Layout closes, if `XBMContentsMainHUD` confirms the player is in the Crucible and a targetable local object appears whose name exactly matches the cached top Board Layout enemy, Splash treats that as arrival in the boss arena. If no active squad BST is present, it sends Numpad 6 once to summon Horn 1. It will not repeatedly summon again during that same board encounter even if the BST later despawns or dies.
+- A Splash `Commence Battle` button is shown while `XBMStageDetailList` is open and reproduces the observed `ButtonClick` / `EventParam=9` local UI path.
 
-## Immediate diagnostic targets
+## Immediate validation targets
 
-### Commence Battle
-1. Open a Board Layout.
-2. Do not interact with other controls immediately before the test if possible.
-3. Click the native `Commence Battle` button once.
-4. Read the retained `Board Layout events (temporary diagnostic)` section in Splash and identify the click-related event type and `EventParam`.
-5. Only after that event is confirmed should Splash reproduce the same native UI path from its own `Commence Battle` button.
-
-### Mode detection
-Capture/compare the active XBM addon set in:
-1. Playable map, no Team Composition window open.
-2. Playable map with `XBMPetParty` open for Horn assignment.
-3. Active combat encounter.
-
-If Combat does not expose a unique XBM marker, detect it via another reliable game-state signal.
+### Arena-entry auto-summon
+Verify that:
+1. Opening a Board Layout caches the correct top enemy name.
+2. Before entering the arena, no automatic summon occurs.
+3. After entering the arena, when that exact targetable enemy appears in the local object table and no BST is active, Splash sends Numpad 6 once.
+4. If a BST is already active when the enemy appears, Splash does not send Numpad 6.
+5. During the same encounter, losing the BST does not cause repeated automatic summons.
+6. Opening the next Board Layout resets the one-shot gate for the next encounter.
 
 ### Party / Squad validation
 Verify that:
