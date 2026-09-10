@@ -24,6 +24,7 @@ public sealed class TeamCompWindow : Window, IDisposable
     public string[] SquadNames { get; set; } = Array.Empty<string>();
     public uint[] SquadCurrentHp { get; set; } = Array.Empty<uint>();
     public uint[] SquadMaxHp { get; set; } = Array.Empty<uint>();
+    public string[] BoardLayoutEventDiagnostic { get; set; } = Array.Empty<string>();
     public string TopEnemyWeakness { get; set; } = string.Empty;
     public bool TeamCompositionVisible { get; set; }
     public bool HasActivePet { get; set; }
@@ -73,6 +74,14 @@ public sealed class TeamCompWindow : Window, IDisposable
 
         if (!TeamCompositionVisible)
             ImGui.TextDisabled("Open Team Composition to select a BST from Squad.");
+
+        if (BoardLayoutEventDiagnostic.Length > 0)
+        {
+            ImGui.Spacing();
+            DrawSectionHeader("Board Layout events (temporary diagnostic)");
+            foreach (var value in BoardLayoutEventDiagnostic)
+                ImGui.TextUnformatted(value);
+        }
 
         ImGui.Spacing();
         DrawSectionHeader("Active XBM addons");
