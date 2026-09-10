@@ -9,20 +9,21 @@ public enum CrucibleMode
 {
     Unknown,
     TeamSelection,
-    Map,
-    Combat,
+    BoardSelection,
+    InInstanceUnresolved,
 }
 
 public sealed class TeamCompWindow : Window, IDisposable
 {
     public CrucibleMode CurrentMode { get; set; } = CrucibleMode.Unknown;
+    public string[] ActiveXbmAddons { get; set; } = Array.Empty<string>();
 
     public TeamCompWindow()
         : base("Splash Crucible##Main")
     {
         SizeConstraints = new WindowSizeConstraints
         {
-            MinimumSize = new Vector2(260, 110),
+            MinimumSize = new Vector2(320, 160),
             MaximumSize = new Vector2(float.MaxValue, float.MaxValue),
         };
 
@@ -39,13 +40,24 @@ public sealed class TeamCompWindow : Window, IDisposable
         var modeText = CurrentMode switch
         {
             CrucibleMode.TeamSelection => "Team Selection",
-            CrucibleMode.Map => "Map",
-            CrucibleMode.Combat => "Combat",
+            CrucibleMode.BoardSelection => "Board Selection",
+            CrucibleMode.InInstanceUnresolved => "Map / Combat (unresolved)",
             _ => "Unknown / Idle",
         };
 
         ImGui.TextUnformatted("Splash Debug");
         ImGui.Separator();
         ImGui.TextUnformatted($"Mode: {modeText}");
+        ImGui.Spacing();
+        ImGui.TextUnformatted("Active XBM addons:");
+
+        if (ActiveXbmAddons.Length == 0)
+        {
+            ImGui.TextDisabled("(none observed)");
+            return;
+        }
+
+        foreach (var addonName in ActiveXbmAddons)
+            ImGui.BulletText(addonName);
     }
 }
