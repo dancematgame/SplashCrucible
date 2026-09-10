@@ -1,3 +1,8 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using Dalamud.Game.Addon.Lifecycle;
+using Dalamud.Game.Addon.Lifecycle.AddonArgTypes;
 using Dalamud.IoC;
 using Dalamud.Interface.Windowing;
 using Dalamud.Plugin;
@@ -11,54 +16,77 @@ public sealed class Plugin : IDalamudPlugin
     [PluginService] internal static IDalamudPluginInterface PluginInterface { get; private set; } = null!;
     [PluginService] internal static IGameGui GameGui { get; private set; } = null!;
     [PluginService] internal static IFramework Framework { get; private set; } = null!;
+    [PluginService] internal static IAddonLifecycle AddonLifecycle { get; private set; } = null!;
     [PluginService] internal static IPluginLog Log { get; private set; } = null!;
 
     private const string TeamCompositionAddonName = "XBMPetParty";
-    private const string MapAddonName = "XBMStageMap";
-    private const string CombatHudAddonName = "XBMContentsMainHUD";
+    private const string BoardSelectionAddonName = "XBMStageMap";
+    private const string InInstanceHudAddonName = "XBMContentsMainHUD";
 
     private readonly WindowSystem windowSystem = new("SplashCrucible");
     private readonly TeamCompWindow mainWindow;
+    private readonly HashSet<string> activeXbmAddons = new(StringComparer.Ordinal);
 
     public Plugin()
     {
         mainWindow = new TeamCompWindow();
         windowSystem.AddWindow(mainWindow);
-
         mainWindow.IsOpen = true;
 
         PluginInterface.UiBuilder.Draw += windowSystem.Draw;
         Framework.Update += OnFrameworkUpdate;
 
-        Log.Information("Splash Crucible loaded.");
+        AddonLifecycle.RegisterListener(AddonEvent.PostSetup, OnAddonPostSetup);
+        AddonLifecycle.RegisterListener(AddonEvent.PreFinalize, OnAddonPreFinalize);
+
+        Log.Information("Splash Crucible loaded. XBM state diagnostic enabled.");
+    }
+
+    private void OnAddonPostSetup(AddonEvent type, AddonArgs args)
+    {
+        if (!args.AddonName.StartsWith("XBM", StringComparison.Ordinal))
+            return;
+
+        activeXbmAddons.Add(args.AddonName);
+        Log.Information("XBM OPEN: {AddonName}", args.AddonName);
+    }
+
+    private void OnAddonPreFinalize(AddonEvent type, AddonArgs args)
+    {
+        if (!args.AddonName.StartsWith("XBM", StringComparison.Ordinal))
+            return;
+
+        activeXbmAddons.Remove(args.AddonName);
+        Log.Information("XBM CLOSE: {AddonName}", args.AddonName);
     }
 
     private void OnFrameworkUpdate(IFramework framework)
     {
-        // This is the persistent main window. Closing it is not part of normal operation.
         mainWindow.IsOpen = true;
 
-        // More specific in-instance states take priority over the shared Team Composition window.
-        if (GameGui.GetAddonByName(CombatHudAddonName) != nint.Zero)
-        {
-            mainWindow.CurrentMode = CrucibleMode.Combat;
-        }
-        else if (GameGui.GetAddonByName(MapAddonName) != nint.Zero)
-        {
-            mainWindow.CurrentMode = CrucibleMode.Map;
-        }
-        else if (GameGui.GetAddonByName(TeamCompositionAddonName) != nint.Zero)
-        {
+        var teamPartyVisible = GameGui.GetAddonByName(TeamCompositionAddonName) != nint.Zero;
+        var boardSelectionVisible = GameGui.GetAddonByName(BoardSelectionAddonName) != nint.Zero;
+        var inInstanceHudVisible = GameGui.GetAddonByName(InInstanceHudAddonName) != nint.Zero;
+
+        // Only label states we can currently identify with confidence.
+        // XBMContentsMainHUD exists during multiple in-instance phases, so Map vs Combat
+        // remains intentionally unresolved until we observe a distinguishing marker.
+        if (teamPartyVisible && !inInstanceHudVisible)
             mainWindow.CurrentMode = CrucibleMode.TeamSelection;
-        }
+        else if (inInstanceHudVisible)
+            mainWindow.CurrentMode = CrucibleMode.InInstanceUnresolved;
+        else if (boardSelectionVisible)
+            mainWindow.CurrentMode = CrucibleMode.BoardSelection;
         else
-        {
             mainWindow.CurrentMode = CrucibleMode.Unknown;
-        }
+
+        mainWindow.ActiveXbmAddons = activeXbmAddons.OrderBy(x => x, StringComparer.Ordinal).ToArray();
     }
 
     public void Dispose()
     {
+        AddonLifecycle.UnregisterListener(AddonEvent.PostSetup, OnAddonPostSetup);
+        AddonLifecycle.UnregisterListener(AddonEvent.PreFinalize, OnAddonPreFinalize);
         Framework.Update -= OnFrameworkUpdate;
         PluginInterface.UiBuilder.Draw -= windowSystem.Draw;
         windowSystem.RemoveAllWindows();
