@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Numerics;
 using Dalamud.Bindings.ImGui;
 using Dalamud.Interface.Windowing;
@@ -14,6 +15,12 @@ public enum CrucibleMode
     InInstanceUnresolved,
 }
 
+public readonly record struct PetPartyClickEvent(
+    int SelectedIndex,
+    int RendererIndex,
+    byte MouseButtonId,
+    string MouseModifier);
+
 public sealed class TeamCompWindow : Window, IDisposable
 {
     public CrucibleMode CurrentMode { get; set; } = CrucibleMode.Unknown;
@@ -21,7 +28,8 @@ public sealed class TeamCompWindow : Window, IDisposable
     public string[] HornNames { get; set; } = { "(unassigned)", "(unassigned)", "(unassigned)" };
     public string[] SquadNames { get; set; } = Array.Empty<string>();
     public bool TeamCompositionVisible { get; set; }
-    public Action<int>? SquadRowClicked { get; set; }
+
+    private readonly List<PetPartyClickEvent> petPartyClickEvents = new();
 
     public TeamCompWindow()
         : base("Splash Crucible##Main")
@@ -38,6 +46,13 @@ public sealed class TeamCompWindow : Window, IDisposable
 
     public void Dispose()
     {
+    }
+
+    public void AddPetPartyClickEvent(PetPartyClickEvent clickEvent)
+    {
+        petPartyClickEvents.Insert(0, clickEvent);
+        if (petPartyClickEvents.Count > 12)
+            petPartyClickEvents.RemoveRange(12, petPartyClickEvents.Count - 12);
     }
 
     public override void Draw()
@@ -65,10 +80,35 @@ public sealed class TeamCompWindow : Window, IDisposable
         DrawSquadHeader();
 
         for (var i = 0; i < 12; i++)
-            DrawSquadRow(i, GetSquadName(i));
+            DrawSquadRow(GetSquadName(i));
+
+        ImGui.TextDisabled("Squad-row activation is temporarily disabled while native left/right click data is measured.");
+
+        ImGui.Spacing();
+        DrawSectionHeader("Team Composition mouse diagnostic");
+        ImGui.TextDisabled("Observation only. Manually click a BST in the native Team Composition window.");
 
         if (!TeamCompositionVisible)
-            ImGui.TextDisabled("Open Team Composition to select a BST from Current Squad.");
+            ImGui.TextDisabled("Open Team Composition before testing.");
+
+        if (ImGui.Button("Clear Clicks"))
+            petPartyClickEvents.Clear();
+
+        ImGui.SameLine();
+        ImGui.TextUnformatted($"Recorded: {petPartyClickEvents.Count}");
+
+        if (petPartyClickEvents.Count == 0)
+        {
+            ImGui.TextDisabled("No native ListItemClick recorded yet.");
+        }
+        else
+        {
+            foreach (var clickEvent in petPartyClickEvents)
+            {
+                ImGui.BulletText(
+                    $"SelectedIndex={clickEvent.SelectedIndex} | RendererIndex={clickEvent.RendererIndex} | MouseButtonId={clickEvent.MouseButtonId} | Modifier={clickEvent.MouseModifier}");
+            }
+        }
 
         ImGui.Spacing();
         DrawSectionHeader("Active XBM addons");
@@ -98,19 +138,9 @@ public sealed class TeamCompWindow : Window, IDisposable
         ImGui.TextDisabled("Tempered Release Type");
     }
 
-    private void DrawSquadRow(int index, string name)
+    private static void DrawSquadRow(string name)
     {
         var startX = ImGui.GetCursorPosX();
-        var rowY = ImGui.GetCursorPosY();
-        var rowHeight = ImGui.GetTextLineHeight();
-        var rowWidth = ImGui.GetContentRegionAvail().X;
-
-        ImGui.InvisibleButton($"##SquadRow{index}", new Vector2(rowWidth, rowHeight));
-        var clicked = ImGui.IsItemClicked();
-        var afterRowY = ImGui.GetCursorPosY();
-
-        ImGui.SetCursorPosY(rowY);
-        ImGui.SetCursorPosX(startX);
         ImGui.TextUnformatted(name);
 
         if (!PetMetadata.TryGet(name, out var metadata))
@@ -124,26 +154,20 @@ public sealed class TeamCompWindow : Window, IDisposable
             ImGui.SameLine();
             ImGui.SetCursorPosX(startX + 365f);
             ImGui.TextDisabled("—");
-        }
-        else
-        {
-            ImGui.SameLine();
-            ImGui.SetCursorPosX(startX + 170f);
-            ImGui.TextColored(GetColour(metadata.Colour), "●");
-
-            ImGui.SameLine();
-            ImGui.SetCursorPosX(startX + 235f);
-            ImGui.TextUnformatted(DisplayOrDash(metadata.BorrowType));
-
-            ImGui.SameLine();
-            ImGui.SetCursorPosX(startX + 365f);
-            ImGui.TextUnformatted(DisplayOrDash(metadata.TemperedReleaseType));
+            return;
         }
 
-        ImGui.SetCursorPosY(afterRowY);
+        ImGui.SameLine();
+        ImGui.SetCursorPosX(startX + 170f);
+        ImGui.TextColored(GetColour(metadata.Colour), "●");
 
-        if (clicked && TeamCompositionVisible)
-            SquadRowClicked?.Invoke(index);
+        ImGui.SameLine();
+        ImGui.SetCursorPosX(startX + 235f);
+        ImGui.TextUnformatted(DisplayOrDash(metadata.BorrowType));
+
+        ImGui.SameLine();
+        ImGui.SetCursorPosX(startX + 365f);
+        ImGui.TextUnformatted(DisplayOrDash(metadata.TemperedReleaseType));
     }
 
     private static Vector4 GetColour(string colour)
