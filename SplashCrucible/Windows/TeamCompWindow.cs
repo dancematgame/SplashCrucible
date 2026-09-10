@@ -22,7 +22,10 @@ public readonly record struct PetPartyUiEvent(
     uint NodeId,
     nint Target,
     nint Listener,
-    nint EventData);
+    nint EventData,
+    int ListSelectedIndex,
+    int RendererIndex,
+    int HoveredIndex3);
 
 public sealed class TeamCompWindow : Window, IDisposable
 {
@@ -92,7 +95,7 @@ public sealed class TeamCompWindow : Window, IDisposable
 
         ImGui.Spacing();
         DrawSectionHeader("Team Composition click diagnostic");
-        ImGui.TextDisabled("Observation only: records native XBMPetParty events and AtkValue changes; does not fire callbacks.");
+        ImGui.TextDisabled("Observation only: records native XBMPetParty events and list-item data; does not fire callbacks.");
 
         if (!TeamCompositionVisible)
             ImGui.TextDisabled("Open Team Composition before testing row clicks.");
@@ -122,8 +125,9 @@ public sealed class TeamCompWindow : Window, IDisposable
             ImGui.TextUnformatted("Recent native UI events:");
             foreach (var uiEvent in petPartyUiEvents)
             {
-                ImGui.BulletText(
-                    $"{uiEvent.EventType} | EP={uiEvent.EventParam} | AP={uiEvent.AtkEventParam} | Node={uiEvent.NodeId} | Target=0x{uiEvent.Target:X} | Listener=0x{uiEvent.Listener:X} | Data=0x{uiEvent.EventData:X}");
+                ImGui.BulletText($"{uiEvent.EventType} | EP={uiEvent.EventParam} | AP={uiEvent.AtkEventParam} | Node={uiEvent.NodeId}");
+                ImGui.TextDisabled($"  List SelectedIndex={uiEvent.ListSelectedIndex} | RendererIndex={uiEvent.RendererIndex} | HoveredIndex3={uiEvent.HoveredIndex3}");
+                ImGui.TextDisabled($"  Target=0x{uiEvent.Target:X} | Listener=0x{uiEvent.Listener:X} | Data=0x{uiEvent.EventData:X}");
             }
         }
 
