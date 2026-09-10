@@ -29,6 +29,8 @@ Current mode targets:
 - `XBMStageMap` is the Board Selection graphic, not the playable map.
 - `XBMStageList` is the Board Selection list.
 - `XBMContentsMainHUD` is present on the playable map and therefore must not be treated as a Combat-only marker.
+- `XBMPetParty` string `AtkValue` entries expose the displayed 12-BST list and associated stats/status text.
+- Changing a Horn assignment does not appear to change the displayed BST-name strings, so Horn membership must be derived from another value/state rather than assuming dedicated Horn-name string indices.
 - See `XBM_UI_MAP.md` for the current full mapping table and confidence notes.
 
 ## Current implementation state
@@ -36,8 +38,8 @@ Current mode targets:
 - The current build includes diagnostic support for observing active XBM addons.
 - Earlier semantic mode guesses were intentionally rolled back where evidence showed they were incorrect.
 - The next mode-detection task is to derive reliable context rules from actual observed UI/game state rather than single-addon guesses.
-- A **Current Party** section has been added for Horn 1 / Horn 2 / Horn 3, but the three assignments are not yet mapped to client data.
-- While `XBMPetParty` is open, the main window now displays its indexed non-empty string `AtkValue` entries. Use this diagnostic to identify which indices contain the BST names assigned to Horn 1, Horn 2 and Horn 3. Once confirmed, wire those exact fields into Current Party and remove the temporary value dump.
+- A **Current Party** section exists for Horn 1 / Horn 2 / Horn 3, but the three assignments are not yet mapped to client data.
+- The earlier string-only `XBMPetParty` diagnostic has been replaced by a before/after `AtkValue` comparator. The comparator snapshots every indexed `AtkValue`, including scalar values and strings, then shows only indices whose type/value changed after a Horn assignment action.
 
 ## Immediate diagnostic targets
 
@@ -50,10 +52,15 @@ Capture/compare the active XBM addon set in:
 If Combat does not expose a unique XBM addon, detect it via another reliable game-state signal.
 
 ### Current Party Horn mapping
-1. Open Team Composition with known BST assignments in Horn 1 / Horn 2 / Horn 3.
-2. Record the `XBMPetParty string values` shown in Splash Crucible.
-3. Identify the three indices whose values match the known Horn assignments.
-4. Repeat after changing at least one Horn assignment to confirm the mapping is stable.
+Use the **Horn assignment diagnostic** while `XBMPetParty` is open:
+1. Set Team Composition to a known state.
+2. Press **Capture Baseline** in Splash Crucible.
+3. Change exactly one Horn assignment in the native Team Composition UI.
+4. Read the **Changed values** list in Splash Crucible.
+5. Repeat with a different BST and/or different Horn to identify which `AtkValue` indices encode selected BST and Horn assignment state.
+6. Once stable indices/semantics are confirmed, wire those values into the Current Party display and remove the temporary comparator.
+
+If changing a Horn produces no meaningful `AtkValue` changes, the next diagnostic step is to inspect the `XBMPetParty` node/component state rather than infer from text.
 
 ## Local workflow
 Repository: `https://github.com/dancematgame/SplashCrucible`
