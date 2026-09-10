@@ -25,6 +25,7 @@ public sealed class Plugin : IDalamudPlugin
     private const string TeamCompositionAddonName = "XBMPetParty";
     private const string BoardLayoutAddonName = "XBMStageDetailList";
     private const string InInstanceHudAddonName = "XBMContentsMainHUD";
+    private const string ResultAddonName = "XBMResult";
 
     private const int PartyRowCount = 12;
     private const int PartyRowStride = 77;
@@ -34,10 +35,13 @@ public sealed class Plugin : IDalamudPlugin
     private const int PartyMaxHpOffset = 12;
     private const int FirstEnemyNameIndex = 57;
     private const int FirstEnemyWeaknessIndex = 62;
+    private const uint CommenceBattleEventParam = 9;
 
     private const byte VkNumpad6 = 0x66;
     private const uint KeyeventfKeyup = 0x0002;
     private static readonly TimeSpan ArenaAutoSummonDelay = TimeSpan.FromMilliseconds(750);
+    private static readonly TimeSpan ArenaAutoSummonRetryDelay = TimeSpan.FromMilliseconds(250);
+    private static readonly TimeSpan ArenaAutoSummonWindow = TimeSpan.FromSeconds(5);
 
     private static readonly string[] KnownWeaknesses =
     {
@@ -58,6 +62,9 @@ public sealed class Plugin : IDalamudPlugin
     private bool arenaEnteredForCurrentBoard;
     private bool autoSummonCompletedForCurrentBoard;
     private DateTime? pendingArenaAutoSummonAt;
+    private DateTime? arenaAutoSummonDeadline;
+    private bool resultWasVisible;
+    private bool resultSeenForCurrentArena;
 
     public Plugin()
     {
@@ -65,6 +72,7 @@ public sealed class Plugin : IDalamudPlugin
         {
             SquadRowClicked = SelectTeamCompositionRow,
             SummonHorn1Requested = SummonHorn1,
+            CommenceBattleRequested = CommenceBattle,
         };
 
         windowSystem.AddWindow(mainWindow);
@@ -90,6 +98,8 @@ public sealed class Plugin : IDalamudPlugin
             arenaEnteredForCurrentBoard = false;
             autoSummonCompletedForCurrentBoard = false;
             pendingArenaAutoSummonAt = null;
+            arenaAutoSummonDeadline = null;
+            resultSeenForCurrentArena = false;
         }
 
         activeXbmAddons.Add(args.AddonName);
@@ -128,6 +138,7 @@ public sealed class Plugin : IDalamudPlugin
         var teamPartyVisible = GameGui.GetAddonByName(TeamCompositionAddonName) != nint.Zero;
         var boardLayoutVisible = GameGui.GetAddonByName(BoardLayoutAddonName) != nint.Zero;
         var inInstanceHudVisible = GameGui.GetAddonByName(InInstanceHudAddonName) != nint.Zero;
+        var resultVisible = GameGui.GetAddonByName(ResultAddonName) != nint.Zero;
 
         if (teamPartyVisible)
             TryUpdateCurrentParty();
@@ -139,18 +150,37 @@ public sealed class Plugin : IDalamudPlugin
         {
             arenaEnteredForCurrentBoard = false;
             pendingArenaAutoSummonAt = null;
+            arenaAutoSummonDeadline = null;
+            resultSeenForCurrentArena = false;
         }
-        else if (!boardLayoutVisible && !arenaEnteredForCurrentBoard && IsCachedTopEnemyPresent())
+        else
         {
-            arenaEnteredForCurrentBoard = true;
-
-            if (!autoSummonCompletedForCurrentBoard && !HasOwnedSquadPet())
+            if (!boardLayoutVisible && !arenaEnteredForCurrentBoard && IsCachedTopEnemyPresent())
             {
-                pendingArenaAutoSummonAt = DateTime.UtcNow + ArenaAutoSummonDelay;
-                Log.Information("Arena detected from cached enemy {EnemyName}; Horn 1 auto-summon queued.", cachedTopEnemyName);
+                arenaEnteredForCurrentBoard = true;
+                QueueArenaAutoSummon();
+                Log.Information("Arena detected from cached enemy {EnemyName}.", cachedTopEnemyName);
+            }
+
+            if (arenaEnteredForCurrentBoard && resultVisible)
+                resultSeenForCurrentArena = true;
+
+            // XBMResult is the confirmed post-encounter Results panel. Its disappearance after
+            // being seen in an Arena is used as the earliest currently-known return-to-Map signal.
+            if (arenaEnteredForCurrentBoard && resultSeenForCurrentArena && resultWasVisible && !resultVisible)
+            {
+                arenaEnteredForCurrentBoard = false;
+                pendingArenaAutoSummonAt = null;
+                arenaAutoSummonDeadline = null;
+                autoSummonCompletedForCurrentBoard = true;
+                resultSeenForCurrentArena = false;
+                cachedTopEnemyName = string.Empty;
+                cachedTopEnemyWeakness = string.Empty;
+                Log.Information("Results panel closed; returning state to Map.");
             }
         }
 
+        resultWasVisible = resultVisible;
         TryRunPendingArenaAutoSummon(inInstanceHudVisible);
 
         if (teamPartyVisible && !inInstanceHudVisible)
@@ -167,7 +197,19 @@ public sealed class Plugin : IDalamudPlugin
         mainWindow.TopEnemyWeakness = cachedTopEnemyWeakness;
         mainWindow.TeamCompositionVisible = teamPartyVisible;
         mainWindow.HasActivePet = HasOwnedSquadPet();
+        mainWindow.BoardLayoutVisible = boardLayoutVisible;
         mainWindow.ActiveXbmAddons = activeXbmAddons.OrderBy(x => x, StringComparer.Ordinal).ToArray();
+    }
+
+    private void QueueArenaAutoSummon()
+    {
+        if (autoSummonCompletedForCurrentBoard)
+            return;
+
+        var now = DateTime.UtcNow;
+        pendingArenaAutoSummonAt = now + ArenaAutoSummonDelay;
+        arenaAutoSummonDeadline = now + ArenaAutoSummonWindow;
+        Log.Information("Horn 1 auto-summon check queued for Arena entry.");
     }
 
     private void TryRunPendingArenaAutoSummon(bool inInstanceHudVisible)
@@ -175,18 +217,34 @@ public sealed class Plugin : IDalamudPlugin
         if (pendingArenaAutoSummonAt is null || DateTime.UtcNow < pendingArenaAutoSummonAt.Value)
             return;
 
-        pendingArenaAutoSummonAt = null;
-        autoSummonCompletedForCurrentBoard = true;
-
         if (!inInstanceHudVisible || !arenaEnteredForCurrentBoard)
-            return;
-
-        if (HasOwnedSquadPet())
         {
-            Log.Information("Arena Horn 1 auto-summon skipped because an active squad BST is present.");
+            pendingArenaAutoSummonAt = null;
+            arenaAutoSummonDeadline = null;
             return;
         }
 
+        if (HasOwnedSquadPet())
+        {
+            if (arenaAutoSummonDeadline is not null && DateTime.UtcNow < arenaAutoSummonDeadline.Value)
+            {
+                // A stale owned-BST object can survive briefly across the arena transition.
+                // Keep checking locally for a short bounded window rather than permanently
+                // cancelling the summon on that first stale reading.
+                pendingArenaAutoSummonAt = DateTime.UtcNow + ArenaAutoSummonRetryDelay;
+                return;
+            }
+
+            pendingArenaAutoSummonAt = null;
+            arenaAutoSummonDeadline = null;
+            autoSummonCompletedForCurrentBoard = true;
+            Log.Information("Arena Horn 1 auto-summon skipped because an active squad BST remained present.");
+            return;
+        }
+
+        pendingArenaAutoSummonAt = null;
+        arenaAutoSummonDeadline = null;
+        autoSummonCompletedForCurrentBoard = true;
         Log.Information("Arena entered with no active squad BST; auto-summoning Horn 1.");
         SendNumpad6();
     }
@@ -249,6 +307,59 @@ public sealed class Plugin : IDalamudPlugin
     {
         keybd_event(VkNumpad6, 0, 0, UIntPtr.Zero);
         keybd_event(VkNumpad6, 0, KeyeventfKeyup, UIntPtr.Zero);
+    }
+
+    private unsafe void CommenceBattle()
+    {
+        var addon = GameGui.GetAddonByName<AtkUnitBase>(BoardLayoutAddonName);
+        if (addon == null)
+            return;
+
+        var nativeEvent = FindCommenceBattleEvent(addon);
+        if (nativeEvent == null)
+        {
+            Log.Warning("Could not locate the native Commence Battle ButtonClick event on XBMStageDetailList.");
+            return;
+        }
+
+        // Important: unlike the crashing prototype, this reuses the actual AtkEvent object
+        // owned by the native button. No fabricated/null event context is passed to the addon.
+        Log.Information("Dispatching native Commence Battle button event from XBMStageDetailList.");
+        addon->ReceiveEvent(nativeEvent->State.EventType, (int)nativeEvent->Param, nativeEvent);
+    }
+
+    private static unsafe AtkEvent* FindCommenceBattleEvent(AtkUnitBase* addon)
+    {
+        if (addon->UldManager.NodeList == null)
+            return null;
+
+        for (var i = 0; i < addon->UldManager.NodeListCount; i++)
+        {
+            var node = addon->UldManager.NodeList[i];
+            if (node == null || node->GetNodeType() != NodeType.Component)
+                continue;
+
+            var componentNode = (AtkComponentNode*)node;
+            var component = componentNode->Component;
+            if (component == null || component->GetComponentType() != ComponentType.Button)
+                continue;
+
+            var ownerNode = component->OwnerNode;
+            if (ownerNode == null)
+                continue;
+
+            var nativeEvent = (AtkEvent*)ownerNode->AtkResNode.AtkEventManager.Event;
+            while (nativeEvent != null)
+            {
+                if (nativeEvent->State.EventType == AtkEventType.ButtonClick &&
+                    nativeEvent->Param == CommenceBattleEventParam)
+                    return nativeEvent;
+
+                nativeEvent = nativeEvent->NextEvent;
+            }
+        }
+
+        return null;
     }
 
     private unsafe void TryUpdateTopEnemyData()
