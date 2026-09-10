@@ -34,6 +34,7 @@ public sealed class Plugin : IDalamudPlugin
     private const int PartyCurrentHpOffset = 11;
     private const int PartyMaxHpOffset = 12;
     private const int FirstEnemyWeaknessIndex = 62;
+    private const int CommenceBattleEventParam = 9;
 
     private const byte VkNumpad6 = 0x66;
     private const uint KeyeventfKeyup = 0x0002;
@@ -47,7 +48,6 @@ public sealed class Plugin : IDalamudPlugin
     private readonly WindowSystem windowSystem = new("SplashCrucible");
     private readonly TeamCompWindow mainWindow;
     private readonly HashSet<string> activeXbmAddons = new(StringComparer.Ordinal);
-    private readonly Queue<string> boardLayoutEventDiagnostic = new();
     private string[] cachedHornNames = { "(unassigned)", "(unassigned)", "(unassigned)" };
     private string[] cachedSquadNames = Enumerable.Repeat("(unknown)", PartyRowCount).ToArray();
     private uint[] cachedSquadCurrentHp = new uint[PartyRowCount];
@@ -61,6 +61,7 @@ public sealed class Plugin : IDalamudPlugin
         {
             SquadRowClicked = SelectTeamCompositionRow,
             SummonHorn1Requested = SummonHorn1,
+            CommenceBattleRequested = CommenceBattle,
         };
 
         windowSystem.AddWindow(mainWindow);
@@ -72,7 +73,6 @@ public sealed class Plugin : IDalamudPlugin
         AddonLifecycle.RegisterListener(AddonEvent.PostSetup, OnAddonPostSetup);
         AddonLifecycle.RegisterListener(AddonEvent.PreFinalize, OnAddonPreFinalize);
         AddonLifecycle.RegisterListener(AddonEvent.PreReceiveEvent, TeamCompositionAddonName, OnPetPartyReceiveEvent);
-        AddonLifecycle.RegisterListener(AddonEvent.PreReceiveEvent, BoardLayoutAddonName, OnBoardLayoutReceiveEvent);
 
         Log.Information("Splash Crucible loaded.");
     }
@@ -81,9 +81,6 @@ public sealed class Plugin : IDalamudPlugin
     {
         if (!args.AddonName.StartsWith("XBM", StringComparison.Ordinal))
             return;
-
-        if (args.AddonName == BoardLayoutAddonName)
-            boardLayoutEventDiagnostic.Clear();
 
         activeXbmAddons.Add(args.AddonName);
         Log.Information("XBM OPEN: {AddonName}", args.AddonName);
@@ -112,17 +109,6 @@ public sealed class Plugin : IDalamudPlugin
         var data = (AtkEventData*)receiveArgs.AtkEventData;
         data->ListItemData.MouseButtonId = 0;
         data->ListItemData.MouseModifier = default;
-    }
-
-    private void OnBoardLayoutReceiveEvent(AddonEvent type, AddonArgs args)
-    {
-        if (args is not AddonReceiveEventArgs receiveArgs)
-            return;
-
-        var entry = $"{receiveArgs.AtkEventType} | EventParam={receiveArgs.EventParam}";
-        boardLayoutEventDiagnostic.Enqueue(entry);
-        while (boardLayoutEventDiagnostic.Count > 12)
-            boardLayoutEventDiagnostic.Dequeue();
     }
 
     private void OnFrameworkUpdate(IFramework framework)
@@ -155,9 +141,9 @@ public sealed class Plugin : IDalamudPlugin
         mainWindow.SquadMaxHp = cachedSquadMaxHp.ToArray();
         mainWindow.TopEnemyWeakness = cachedTopEnemyWeakness;
         mainWindow.TeamCompositionVisible = teamPartyVisible;
+        mainWindow.BoardLayoutVisible = boardLayoutVisible;
         mainWindow.HasActivePet = HasOwnedSquadPet();
         mainWindow.ActiveXbmAddons = activeXbmAddons.OrderBy(x => x, StringComparer.Ordinal).ToArray();
-        mainWindow.BoardLayoutEventDiagnostic = boardLayoutEventDiagnostic.ToArray();
     }
 
     private bool HasOwnedSquadPet()
@@ -196,6 +182,17 @@ public sealed class Plugin : IDalamudPlugin
 
         keybd_event(VkNumpad6, 0, 0, UIntPtr.Zero);
         keybd_event(VkNumpad6, 0, KeyeventfKeyup, UIntPtr.Zero);
+    }
+
+    private unsafe void CommenceBattle()
+    {
+        var addon = GameGui.GetAddonByName<AtkUnitBase>(BoardLayoutAddonName);
+        if (addon == null)
+            return;
+
+        // Native observation: pressing Commence Battle sends ButtonClick with EventParam=9
+        // to XBMStageDetailList. Reproduce that same addon-local receive-event path.
+        ((AtkEventListener*)addon)->ReceiveEvent(AtkEventType.ButtonClick, CommenceBattleEventParam, null, null);
     }
 
     private unsafe void TryUpdateTopEnemyWeakness()
@@ -337,7 +334,6 @@ public sealed class Plugin : IDalamudPlugin
         AddonLifecycle.UnregisterListener(AddonEvent.PostSetup, OnAddonPostSetup);
         AddonLifecycle.UnregisterListener(AddonEvent.PreFinalize, OnAddonPreFinalize);
         AddonLifecycle.UnregisterListener(AddonEvent.PreReceiveEvent, TeamCompositionAddonName, OnPetPartyReceiveEvent);
-        AddonLifecycle.UnregisterListener(AddonEvent.PreReceiveEvent, BoardLayoutAddonName, OnBoardLayoutReceiveEvent);
         Framework.Update -= OnFrameworkUpdate;
         PluginInterface.UiBuilder.Draw -= windowSystem.Draw;
         windowSystem.RemoveAllWindows();
