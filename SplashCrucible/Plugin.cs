@@ -72,8 +72,11 @@ public sealed class Plugin : IDalamudPlugin
     private unsafe void OnPetPartyReceiveEvent(AddonEvent type, AddonArgs args)
     {
         if (args is not AddonReceiveEventArgs receiveArgs ||
-            receiveArgs.AtkEventType != AtkEventType.ListItemClick ||
             receiveArgs.AtkEventData == nint.Zero)
+            return;
+
+        var eventType = (AtkEventType)receiveArgs.AtkEventType;
+        if (eventType != AtkEventType.ListItemClick)
             return;
 
         var data = (AtkEventData*)receiveArgs.AtkEventData;
