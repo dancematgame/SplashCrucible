@@ -1,12 +1,12 @@
 # XBM UI Map
 
-This file records observed XBM addon names and their likely visible UI purpose. Treat entries marked with `?` as provisional until confirmed in-game.
+This file records observed XBM addon names and their visible UI purpose. Treat entries marked with `?` as provisional until confirmed in-game.
 
 | XBM addon | Visible UI / interpretation | Confidence |
 |---|---|---|
 | `XBMStageList` | Board Selection List | High |
 | `XBMStageMap` | Board Selection Graphic | High |
-| `XBMContentsMainHUD` | Item Box? | Provisional |
+| `XBMContentsMainHUD` | Broad in-Crucible HUD marker | High for in-duty presence; exact visible sub-panel still provisional |
 | `XBMPetActionDetail` | Bottom Left Popup | High |
 | `XBMPetParty` | Team Composition Box | High |
 | `XBMStageDetailList` | Board Layout Window | High |
@@ -14,27 +14,16 @@ This file records observed XBM addon names and their likely visible UI purpose. 
 | `XBMMonsterBookDetail` | Master's Bestiary Right Page | High |
 | `XBMMonsterNotebook` | Master's Bestiary Left Page | High |
 
-## Important mode-detection findings
+## Current top-level state findings
 
-- `XBMPetParty` appears both during outside-instance Team Selection and when assigning BSTs to Horn 1 / Horn 2 / Horn 3 from the Crucible map. It therefore cannot distinguish those contexts by itself.
-- `XBMStageMap` is the board/challenge selection graphic, not the playable Crucible map.
-- `XBMContentsMainHUD` is present on the playable Crucible map and therefore is not sufficient by itself to identify Combat.
-- Mode detection should be derived from combinations of active UI/state markers, not from a single guessed addon name.
+- **Select Squad**: `XBMPetParty` is visible while `XBMContentsMainHUD` is absent. This is the outside-duty squad-selection context.
+- **Map**: `XBMContentsMainHUD` is present and the cached Board Layout top enemy has not been observed for the current board.
+- **Arena**: the cached Board Layout top enemy appears as a targetable local object. Arena is latched so enemy death/despawn does not falsely return the state to Map mid-resolution.
+- `XBMResult` is the confirmed Results panel. After Arena has been entered and Results has been seen, its disappearance while `XBMContentsMainHUD` remains present is now used as the provisional earliest Arena -> Map return signal.
+- Opening a new `XBMStageDetailList` also resets the Arena latch for the next board.
+- `XBMPetParty` appears both outside the duty and on the playable map, so it cannot distinguish those contexts by itself.
+- `XBMStageMap` is the board/challenge selection graphic, not the playable map.
 
-## Contexts the main window must eventually distinguish
+## Current validation goal
 
-1. **Team Selection** — outside the instance, editing the 12-BST team.
-2. **Board Selection** — choosing which board/challenge to enter.
-3. **Map** — playable Crucible map, including opening Team Composition to assign BSTs to Horn 1 / Horn 2 / Horn 3.
-4. **Combat** — active encounter gameplay.
-5. **Results** — post-encounter/result UI, if useful later.
-
-## Current diagnostic goal
-
-Compare active XBM addons in these states:
-
-- Playable map with no Team Composition window open.
-- Playable map with `XBMPetParty` open for Horn assignment.
-- Active combat encounter.
-
-If no combat-specific XBM marker exists, use another reliable game-state signal instead of inferring Combat from `XBMContentsMainHUD`.
+Confirm that the `XBMResult` visible -> closed transition occurs at the physical return to the playable Map, before Team Composition is reopened. If it is still late or early, capture the active XBM addon changes around the arena-exit transition and use a more precise observed marker.
