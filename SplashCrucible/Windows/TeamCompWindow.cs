@@ -1,6 +1,8 @@
 using System;
 using System.Numerics;
 using Dalamud.Bindings.ImGui;
+using Dalamud.Game.Text.SeStringHandling;
+using Dalamud.Interface.Utility;
 using Dalamud.Interface.Windowing;
 using SplashCrucible.Data;
 
@@ -85,7 +87,7 @@ public sealed class TeamCompWindow : Window, IDisposable
     private void DrawPartyRow(int hornIndex)
     {
         var name = GetHornName(hornIndex);
-        DrawMetadataRow($"Horn {hornIndex + 1}: {name}", name, bold: false);
+        DrawMetadataRow(name, name, bold: false);
     }
 
     private void DrawSquadRow(int index, string name)
@@ -137,7 +139,7 @@ public sealed class TeamCompWindow : Window, IDisposable
 
         ImGui.SameLine();
         ImGui.SetCursorPosX(startX + 195f);
-        DrawAspectIcon(metadata.Aspect, bold);
+        DrawAspectIcon(metadata.Aspect);
 
         ImGui.SameLine();
         ImGui.SetCursorPosX(startX + 235f);
@@ -148,24 +150,31 @@ public sealed class TeamCompWindow : Window, IDisposable
         DrawText(DisplayOrDash(metadata.TemperedReleaseType), bold);
     }
 
-    private static void DrawAspectIcon(string aspect, bool bold)
+    private static void DrawAspectIcon(string aspect)
     {
-        var (icon, colour) = aspect switch
+        var icon = aspect switch
         {
-            "Fire" => ("▲", new Vector4(1.00f, 0.45f, 0.20f, 1.00f)),
-            "Ice" => ("❄", new Vector4(0.55f, 0.85f, 1.00f, 1.00f)),
-            "Lightning" => ("ϟ", new Vector4(0.80f, 0.60f, 1.00f, 1.00f)),
-            "Wind" => ("≈", new Vector4(0.45f, 0.90f, 0.55f, 1.00f)),
-            "Water" => ("▼", new Vector4(0.35f, 0.65f, 1.00f, 1.00f)),
-            "Earth" => ("◆", new Vector4(0.85f, 0.65f, 0.30f, 1.00f)),
-            "Slashing" => ("╱", new Vector4(0.90f, 0.90f, 0.90f, 1.00f)),
-            "Piercing" => ("→", new Vector4(0.90f, 0.90f, 0.90f, 1.00f)),
-            "Blunt" => ("■", new Vector4(0.90f, 0.90f, 0.90f, 1.00f)),
-            "Unaspected" => ("○", new Vector4(0.70f, 0.70f, 0.70f, 1.00f)),
-            _ => ("?", new Vector4(0.65f, 0.65f, 0.65f, 1.00f)),
+            "Fire" => BitmapFontIcon.ElementFire,
+            "Ice" => BitmapFontIcon.ElementIce,
+            "Wind" => BitmapFontIcon.ElementWind,
+            "Earth" => BitmapFontIcon.ElementEarth,
+            "Lightning" => BitmapFontIcon.ElementLightning,
+            "Water" => BitmapFontIcon.ElementWater,
+            "Unaspected" => BitmapFontIcon.RedStar,
+            "Blunt" => BitmapFontIcon.BluntDamage,
+            "Piercing" => BitmapFontIcon.PiercingDamage,
+            "Slashing" => BitmapFontIcon.SlashingDamage,
+            _ => BitmapFontIcon.None,
         };
 
-        DrawColoredText(colour, icon, bold);
+        if (icon == BitmapFontIcon.None)
+        {
+            ImGui.TextDisabled("?");
+        }
+        else
+        {
+            ImGuiHelpers.CompileSeStringWrapped($"<icon({(int)icon})>");
+        }
 
         if (ImGui.IsItemHovered())
             ImGui.SetTooltip($"Auto-attack: {aspect}");
