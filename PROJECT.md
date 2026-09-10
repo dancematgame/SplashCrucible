@@ -40,8 +40,9 @@ Current mode targets:
 - Confirmed Horn assignment encoding: `0 = Horn 1`, `1 = Horn 2`, `2 = Horn 3`, `3 = unassigned`.
 - Example observed row assignment indices: first row `80`, second row `157`, third row `234`.
 - Native Team Composition `ListItemClick` diagnostics confirmed direct zero-based list mapping: Vulture/row 1 reports `SelectedIndex=0` and `RendererIndex=0`; Bat/row 2 reports `1`; Dullahan/row 3 reports `2`.
-- Current ClientStructs exposes `AtkComponentList.DispatchItemEvent(index, AtkEventType.ListItemClick)`, which matches the native event type observed for real Team Composition row activation.
-- An earlier attempt using `SelectItem(row, true)` produced no visible Team Composition action; Current Squad now dispatches the observed native `ListItemClick` event on the local 12-row `XBMPetParty` list instead.
+- `AtkEventData.AtkListItemData` also exposes `MouseButtonId` and `MouseModifier`, which are now the next diagnostic target.
+- `SelectItem(row, true)` changed native list selection but did not visibly activate the BST row.
+- `DispatchItemEvent(row, AtkEventType.ListItemClick)` partially activated rows, but testing showed that a Splash left-click could intermittently produce the native right-click/context-menu behavior. Therefore that synthetic path is not considered correct and is currently disabled.
 - See `XBM_UI_MAP.md` for the current full mapping table and confidence notes.
 
 ## BST metadata
@@ -65,8 +66,8 @@ Current Squad resolves metadata by BST name. Colour is rendered as a coloured ci
 - Each Current Squad row shows: BST name, coloured circle, Borrow Type, and Tempered Release Type.
 - Horn names and squad names update live while Team Composition is open.
 - The most recently read Horn assignments and squad list are cached in plugin memory so they remain visible after the native Team Composition window closes.
-- Current Squad rows are clickable while Team Composition is open. A click finds the native 12-row `AtkComponentList` inside `XBMPetParty` and dispatches `AtkEventType.ListItemClick` for the confirmed zero-based row index.
-- The temporary row-click diagnostic UI has been removed now that row mapping is confirmed.
+- Current Squad synthetic row activation is temporarily disabled while the native left-click versus right-click mouse-button data is measured.
+- The current **Team Composition mouse diagnostic** is observation-only and records native `ListItemClick` `SelectedIndex`, `RendererIndex`, `MouseButtonId`, and `MouseModifier`.
 
 ## Immediate diagnostic targets
 
@@ -86,8 +87,18 @@ Verify that:
 4. Current Squad shows all 12 BST names in the same order as Team Composition.
 5. Each known BST resolves its CSV-derived colour, Borrow Type, and Tempered Release Type correctly.
 6. Closing Team Composition leaves the last known Horn assignments and Current Squad visible in Splash Crucible.
-7. With Team Composition open, clicking Current Squad rows 1, 2, and 3 reproduces the corresponding native Team Composition selections/assignments through the local list event path.
-8. With Team Composition closed, Current Squad clicks do nothing and do not invoke any other game interaction path.
+
+### Native left/right click diagnostic
+Goal: determine the exact native mouse-button context required for safe local row activation.
+
+Procedure:
+1. Open Team Composition.
+2. Press **Clear Clicks** in Splash Crucible.
+3. Manually left-click one BST row in native Team Composition and record `SelectedIndex`, `RendererIndex`, `MouseButtonId`, and `MouseModifier`.
+4. Clear again.
+5. Manually right-click the same BST row and record the same fields.
+6. Optionally repeat on a second row to verify mouse-button values are row-independent.
+7. Do not re-enable synthetic Current Squad activation until left-click behavior can be reproduced without ambiguity.
 
 ## Local workflow
 Repository: `https://github.com/dancematgame/SplashCrucible`
