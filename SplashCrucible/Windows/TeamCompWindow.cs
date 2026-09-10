@@ -22,7 +22,8 @@ public sealed class TeamCompWindow : Window, IDisposable
     public string[] ActiveXbmAddons { get; set; } = Array.Empty<string>();
     public string[] HornNames { get; set; } = { "(unassigned)", "(unassigned)", "(unassigned)" };
     public string[] SquadNames { get; set; } = Array.Empty<string>();
-    public string[] TeamCompositionRowDiagnostic { get; set; } = Array.Empty<string>();
+    public uint[] SquadCurrentHp { get; set; } = Array.Empty<uint>();
+    public uint[] SquadMaxHp { get; set; } = Array.Empty<uint>();
     public string TopEnemyWeakness { get; set; } = string.Empty;
     public bool TeamCompositionVisible { get; set; }
     public bool HasActivePet { get; set; }
@@ -73,16 +74,6 @@ public sealed class TeamCompWindow : Window, IDisposable
         if (!TeamCompositionVisible)
             ImGui.TextDisabled("Open Team Composition to select a BST from Squad.");
 
-        if (TeamCompositionRowDiagnostic.Length > 0)
-        {
-            ImGui.Spacing();
-            DrawSectionHeader("Team Composition row diagnostic (temporary)");
-            ImGui.BeginChild("##TeamCompositionRowDiagnostic", new Vector2(0, 220), true);
-            foreach (var value in TeamCompositionRowDiagnostic)
-                ImGui.TextUnformatted(value);
-            ImGui.EndChild();
-        }
-
         ImGui.Spacing();
         DrawSectionHeader("Active XBM addons");
         if (ActiveXbmAddons.Length == 0)
@@ -119,6 +110,10 @@ public sealed class TeamCompWindow : Window, IDisposable
     private void DrawPartyRow(int hornIndex)
     {
         var name = GetHornName(hornIndex);
+        var squadIndex = Array.FindIndex(SquadNames,
+            squadName => string.Equals(squadName, name, StringComparison.OrdinalIgnoreCase));
+        var (currentHp, maxHp) = GetSquadHp(squadIndex);
+
         var startX = ImGui.GetCursorPosX();
         var rowY = ImGui.GetCursorPosY();
         var rowHeight = ImGui.GetTextLineHeight();
@@ -130,20 +125,16 @@ public sealed class TeamCompWindow : Window, IDisposable
 
         ImGui.SetCursorPosY(rowY);
         ImGui.SetCursorPosX(startX);
-        DrawMetadataRow(name, name, bold: false);
+        DrawMetadataRow(name, name, bold: false, currentHp, maxHp);
         ImGui.SetCursorPosY(afterRowY);
 
-        if (!clicked || !TeamCompositionVisible || name == "(unassigned)")
-            return;
-
-        var squadIndex = Array.FindIndex(SquadNames,
-            squadName => string.Equals(squadName, name, StringComparison.OrdinalIgnoreCase));
-        if (squadIndex >= 0)
+        if (clicked && TeamCompositionVisible && name != "(unassigned)" && squadIndex >= 0)
             SquadRowClicked?.Invoke(squadIndex);
     }
 
     private void DrawSquadRow(int index, string name)
     {
+        var (currentHp, maxHp) = GetSquadHp(index);
         var startX = ImGui.GetCursorPosX();
         var rowY = ImGui.GetCursorPosY();
         var rowHeight = ImGui.GetTextLineHeight();
@@ -155,14 +146,14 @@ public sealed class TeamCompWindow : Window, IDisposable
 
         ImGui.SetCursorPosY(rowY);
         ImGui.SetCursorPosX(startX);
-        DrawMetadataRow(name, name, bold: true);
+        DrawMetadataRow(name, name, bold: true, currentHp, maxHp);
         ImGui.SetCursorPosY(afterRowY);
 
         if (clicked && TeamCompositionVisible)
             SquadRowClicked?.Invoke(index);
     }
 
-    private void DrawMetadataRow(string firstColumn, string metadataName, bool bold)
+    private void DrawMetadataRow(string firstColumn, string metadataName, bool bold, uint currentHp, uint maxHp)
     {
         var startX = ImGui.GetCursorPosX();
         DrawText(firstColumn, bold);
@@ -173,6 +164,7 @@ public sealed class TeamCompWindow : Window, IDisposable
             ImGui.SameLine(); ImGui.SetCursorPosX(startX + 195f); DrawDisabledText("?", bold);
             ImGui.SameLine(); ImGui.SetCursorPosX(startX + 235f); DrawDisabledText("—", bold);
             ImGui.SameLine(); ImGui.SetCursorPosX(startX + 365f); DrawDisabledText("—", bold);
+            ImGui.SameLine(); ImGui.SetCursorPosX(startX + 485f); DrawHealthPercent(currentHp, maxHp, bold);
             return;
         }
 
@@ -181,6 +173,30 @@ public sealed class TeamCompWindow : Window, IDisposable
         DrawAspectIcon(metadata.Aspect, IsWeaknessMatch(metadata.Aspect));
         ImGui.SameLine(); ImGui.SetCursorPosX(startX + 235f); DrawText(DisplayOrDash(metadata.BorrowType), bold);
         ImGui.SameLine(); ImGui.SetCursorPosX(startX + 365f); DrawText(DisplayOrDash(metadata.TemperedReleaseType), bold);
+        ImGui.SameLine(); ImGui.SetCursorPosX(startX + 485f); DrawHealthPercent(currentHp, maxHp, bold);
+    }
+
+    private static void DrawHealthPercent(uint currentHp, uint maxHp, bool bold)
+    {
+        if (maxHp == 0)
+        {
+            DrawDisabledText("—", bold);
+            return;
+        }
+
+        var percent = Math.Clamp((int)Math.Round((double)currentHp * 100.0 / maxHp), 0, 100);
+        DrawText($"{percent}%", bold);
+
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip($"HP: {currentHp}/{maxHp}");
+    }
+
+    private (uint Current, uint Max) GetSquadHp(int index)
+    {
+        if (index < 0 || index >= SquadCurrentHp.Length || index >= SquadMaxHp.Length)
+            return (0, 0);
+
+        return (SquadCurrentHp[index], SquadMaxHp[index]);
     }
 
     private bool IsWeaknessMatch(string aspect)
