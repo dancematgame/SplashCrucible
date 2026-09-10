@@ -7,6 +7,7 @@ using Dalamud.IoC;
 using Dalamud.Interface.Windowing;
 using Dalamud.Plugin;
 using Dalamud.Plugin.Services;
+using FFXIVClientStructs.FFXIV.Component.GUI;
 using SplashCrucible.Windows;
 
 namespace SplashCrucible;
@@ -81,6 +82,37 @@ public sealed class Plugin : IDalamudPlugin
             mainWindow.CurrentMode = CrucibleMode.Unknown;
 
         mainWindow.ActiveXbmAddons = activeXbmAddons.OrderBy(x => x, StringComparer.Ordinal).ToArray();
+        mainWindow.PetPartyStringValues = ReadPetPartyStringValues();
+    }
+
+    private unsafe string[] ReadPetPartyStringValues()
+    {
+        var addonAddress = GameGui.GetAddonByName(TeamCompositionAddonName);
+        if (addonAddress == nint.Zero)
+            return Array.Empty<string>();
+
+        var addon = (AtkUnitBase*)addonAddress;
+        if (addon->AtkValues == null || addon->AtkValuesCount == 0)
+            return Array.Empty<string>();
+
+        var values = new List<string>();
+
+        for (var i = 0; i < addon->AtkValuesCount; i++)
+        {
+            var value = addon->AtkValues[i];
+            var baseType = value.Type & AtkValueType.TypeMask;
+
+            if (baseType is not (AtkValueType.String or AtkValueType.ConstString or AtkValueType.WideString))
+                continue;
+
+            var text = value.GetValueAsString();
+            if (string.IsNullOrWhiteSpace(text))
+                continue;
+
+            values.Add($"[{i}] {value.Type}: {text}");
+        }
+
+        return values.ToArray();
     }
 
     public void Dispose()
