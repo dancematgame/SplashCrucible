@@ -11,8 +11,7 @@ namespace SplashCrucible.Windows;
 public enum CrucibleMode
 {
     Unknown,
-    TeamSelection,
-    BoardSelection,
+    SelectSquad,
     Map,
     Arena,
 }
@@ -28,10 +27,8 @@ public sealed class TeamCompWindow : Window, IDisposable
     public string TopEnemyWeakness { get; set; } = string.Empty;
     public bool TeamCompositionVisible { get; set; }
     public bool HasActivePet { get; set; }
-    public bool BoardLayoutVisible { get; set; }
     public Action<int>? SquadRowClicked { get; set; }
     public Action? SummonHorn1Requested { get; set; }
-    public Action? CommenceBattleRequested { get; set; }
 
     public TeamCompWindow()
         : base("Splash Crucible##Main")
@@ -52,8 +49,7 @@ public sealed class TeamCompWindow : Window, IDisposable
     {
         var modeText = CurrentMode switch
         {
-            CrucibleMode.TeamSelection => "Team Selection",
-            CrucibleMode.BoardSelection => "Board Selection",
+            CrucibleMode.SelectSquad => "Select Squad",
             CrucibleMode.Map => "Map",
             CrucibleMode.Arena => "Arena",
             _ => "Unknown / Idle",
@@ -77,15 +73,6 @@ public sealed class TeamCompWindow : Window, IDisposable
 
         if (!TeamCompositionVisible)
             ImGui.TextDisabled("Open Team Composition to select a BST from Squad.");
-
-        if (BoardLayoutVisible)
-        {
-            ImGui.Spacing();
-            var buttonSize = ImGui.CalcTextSize("Commence Battle") + new Vector2(24f, 10f);
-            ImGui.SetCursorPosX(ImGui.GetCursorPosX() + Math.Max(0f, (ImGui.GetContentRegionAvail().X - buttonSize.X) * 0.5f));
-            if (ImGui.Button("Commence Battle", buttonSize))
-                CommenceBattleRequested?.Invoke();
-        }
 
         ImGui.Spacing();
         DrawSectionHeader("Active XBM addons");
