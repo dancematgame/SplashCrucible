@@ -18,6 +18,8 @@ public enum CrucibleMode
 
 public sealed class TeamCompWindow : Window, IDisposable
 {
+    private const string DisplayVersion = "1.1.1";
+
     public CrucibleMode CurrentMode { get; set; } = CrucibleMode.Unknown;
     public string[] ActiveXbmAddons { get; set; } = Array.Empty<string>();
     public string[] HornNames { get; set; } = { "(unassigned)", "(unassigned)", "(unassigned)" };
@@ -57,7 +59,7 @@ public sealed class TeamCompWindow : Window, IDisposable
             _ => "Unknown / Idle",
         };
 
-        ImGui.TextUnformatted("Splash Debug");
+        ImGui.TextUnformatted($"Cruic-able v{DisplayVersion}");
         ImGui.Separator();
         ImGui.TextUnformatted($"Mode: {modeText}");
 
@@ -72,11 +74,18 @@ public sealed class TeamCompWindow : Window, IDisposable
         for (var i = 0; i < 12; i++)
             DrawSquadRow(i, GetSquadName(i));
 
-        if (!TeamCompositionVisible)
-            ImGui.TextDisabled("Open Team Composition to select a BST from Squad.");
+        if (BoardLayoutVisible)
+        {
+            ImGui.Spacing();
+            DrawCenteredButton("Commence Battle", () => CommenceBattleRequested?.Invoke());
+        }
 
         ImGui.Spacing();
-        DrawSectionHeader("Active XBM addons");
+        DrawSummonButton();
+
+        ImGui.Spacing();
+        DrawSectionHeader("Debug");
+        ImGui.TextUnformatted("Active XBM addons");
         if (ActiveXbmAddons.Length == 0)
         {
             ImGui.TextDisabled("(none observed)");
@@ -86,15 +95,6 @@ public sealed class TeamCompWindow : Window, IDisposable
             foreach (var addonName in ActiveXbmAddons)
                 ImGui.BulletText(addonName);
         }
-
-        if (BoardLayoutVisible)
-        {
-            ImGui.Spacing();
-            DrawCenteredButton("Commence Battle", () => CommenceBattleRequested?.Invoke());
-        }
-
-        ImGui.Spacing();
-        DrawSummonButton();
     }
 
     private static void DrawCenteredButton(string label, Action onPressed)
