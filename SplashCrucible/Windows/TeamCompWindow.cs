@@ -1,9 +1,11 @@
 using System;
+using System.Linq;
 using System.Numerics;
 using Dalamud.Bindings.ImGui;
 using Dalamud.Game.Text.SeStringHandling;
 using Dalamud.Interface.Utility;
 using Dalamud.Interface.Windowing;
+using FFXIVClientStructs.FFXIV.Component.GUI;
 using SplashCrucible.Data;
 
 namespace SplashCrucible.Windows;
@@ -18,7 +20,20 @@ public enum CrucibleMode
 
 public sealed class TeamCompWindow : Window, IDisposable
 {
-    private const string DisplayVersion = "1.1.1";
+    private const string DisplayVersion = "1.1.2";
+
+    private static readonly string[] KnownXbmAddons =
+    {
+        "XBMStageList",
+        "XBMStageMap",
+        "XBMContentsMainHUD",
+        "XBMPetActionDetail",
+        "XBMPetParty",
+        "XBMStageDetailList",
+        "XBMResult",
+        "XBMMonsterBookDetail",
+        "XBMMonsterNotebook",
+    };
 
     public CrucibleMode CurrentMode { get; set; } = CrucibleMode.Unknown;
     public string[] ActiveXbmAddons { get; set; } = Array.Empty<string>();
@@ -84,16 +99,41 @@ public sealed class TeamCompWindow : Window, IDisposable
         DrawSummonButton();
 
         ImGui.Spacing();
+        DrawDebugProbe();
+    }
+
+    private unsafe void DrawDebugProbe()
+    {
         DrawSectionHeader("Debug");
-        ImGui.TextUnformatted("Active XBM addons");
-        if (ActiveXbmAddons.Length == 0)
+
+        var player = Plugin.ObjectTable.LocalPlayer;
+        if (player == null)
         {
-            ImGui.TextDisabled("(none observed)");
+            ImGui.TextDisabled("Player position: unavailable");
         }
         else
         {
-            foreach (var addonName in ActiveXbmAddons)
-                ImGui.BulletText(addonName);
+            var position = player.Position;
+            ImGui.TextUnformatted($"Player position: X {position.X:F2}  Y {position.Y:F2}  Z {position.Z:F2}");
+        }
+
+        ImGui.TextUnformatted($"Active squad BST detected: {(HasActivePet ? "YES" : "NO")}");
+        ImGui.TextUnformatted($"Top enemy weakness cached: {(string.IsNullOrWhiteSpace(TopEnemyWeakness) ? "(none)" : TopEnemyWeakness)}");
+
+        ImGui.Spacing();
+        ImGui.TextUnformatted("XBM addon probe (allocated / visible)");
+
+        var addonNames = KnownXbmAddons
+            .Concat(ActiveXbmAddons)
+            .Distinct(StringComparer.Ordinal)
+            .OrderBy(name => name, StringComparer.Ordinal);
+
+        foreach (var addonName in addonNames)
+        {
+            var addon = Plugin.GameGui.GetAddonByName<AtkUnitBase>(addonName);
+            var exists = addon != null;
+            var visible = exists && addon->IsVisible;
+            ImGui.BulletText($"{addonName}: {(exists ? "YES" : "no")} / {(visible ? "VISIBLE" : "hidden")}");
         }
     }
 
