@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Globalization;
 using System.Linq;
 using Dalamud.Game.Addon.Lifecycle;
 using Dalamud.Game.Addon.Lifecycle.AddonArgTypes;
@@ -25,9 +24,15 @@ public sealed class Plugin : IDalamudPlugin
     private const string BoardSelectionAddonName = "XBMStageMap";
     private const string InInstanceHudAddonName = "XBMContentsMainHUD";
 
+    private const int PartyRowCount = 12;
+    private const int PartyRowStride = 77;
+    private const int FirstPartyNameIndex = 9;
+    private const int FirstPartyAssignmentIndex = 80;
+
     private readonly WindowSystem windowSystem = new("SplashCrucible");
     private readonly TeamCompWindow mainWindow;
     private readonly HashSet<string> activeXbmAddons = new(StringComparer.Ordinal);
+    private string[] cachedHornNames = { "(unassigned)", "(unassigned)", "(unassigned)" };
 
     public Plugin()
     {
@@ -82,44 +87,50 @@ public sealed class Plugin : IDalamudPlugin
         else
             mainWindow.CurrentMode = CrucibleMode.Unknown;
 
+        if (teamPartyVisible)
+            TryUpdateCurrentParty();
+
+        mainWindow.HornNames = cachedHornNames.ToArray();
         mainWindow.ActiveXbmAddons = activeXbmAddons.OrderBy(x => x, StringComparer.Ordinal).ToArray();
-        mainWindow.PetPartyValues = ReadPetPartyValues();
     }
 
-    private unsafe PetPartyValue[] ReadPetPartyValues()
+    private unsafe void TryUpdateCurrentParty()
     {
         var addon = GameGui.GetAddonByName<AtkUnitBase>(TeamCompositionAddonName);
-        if (addon == null || addon->AtkValues == null || addon->AtkValuesCount == 0)
-            return Array.Empty<PetPartyValue>();
+        if (addon == null || addon->AtkValues == null)
+            return;
 
-        var values = new PetPartyValue[addon->AtkValuesCount];
+        var lastRequiredIndex = FirstPartyAssignmentIndex + ((PartyRowCount - 1) * PartyRowStride);
+        if (addon->AtkValuesCount <= lastRequiredIndex)
+            return;
 
-        for (var i = 0; i < addon->AtkValuesCount; i++)
+        var horns = new[] { "(unassigned)", "(unassigned)", "(unassigned)" };
+
+        for (var row = 0; row < PartyRowCount; row++)
         {
-            var value = addon->AtkValues[i];
-            values[i] = new PetPartyValue(i, value.Type.ToString(), FormatAtkValue(value));
+            var nameIndex = FirstPartyNameIndex + (row * PartyRowStride);
+            var assignmentIndex = FirstPartyAssignmentIndex + (row * PartyRowStride);
+
+            var nameValue = addon->AtkValues[nameIndex];
+            var assignmentValue = addon->AtkValues[assignmentIndex];
+
+            var name = nameValue.GetValueAsString();
+            if (string.IsNullOrWhiteSpace(name))
+                continue;
+
+            var assignmentType = assignmentValue.Type & AtkValueType.TypeMask;
+            var assignment = assignmentType switch
+            {
+                AtkValueType.UInt => assignmentValue.UInt,
+                AtkValueType.Int when assignmentValue.Int >= 0 => (uint)assignmentValue.Int,
+                _ => uint.MaxValue,
+            };
+
+            if (assignment <= 2)
+                horns[assignment] = name;
         }
 
-        return values;
-    }
-
-    private static string FormatAtkValue(AtkValue value)
-    {
-        var baseType = value.Type & AtkValueType.TypeMask;
-
-        return baseType switch
-        {
-            AtkValueType.Undefined => string.Empty,
-            AtkValueType.Null => string.Empty,
-            AtkValueType.Bool => value.Bool ? "true" : "false",
-            AtkValueType.Int => value.Int.ToString(CultureInfo.InvariantCulture),
-            AtkValueType.Int64 => value.Int64.ToString(CultureInfo.InvariantCulture),
-            AtkValueType.UInt => value.UInt.ToString(CultureInfo.InvariantCulture),
-            AtkValueType.UInt64 => value.UInt64.ToString(CultureInfo.InvariantCulture),
-            AtkValueType.Float => value.Float.ToString("R", CultureInfo.InvariantCulture),
-            AtkValueType.String or AtkValueType.ConstString or AtkValueType.WideString => value.GetValueAsString(),
-            _ => value.GetValueAsString(),
-        };
+        cachedHornNames = horns;
     }
 
     public void Dispose()
