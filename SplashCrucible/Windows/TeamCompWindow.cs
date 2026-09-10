@@ -24,12 +24,13 @@ public sealed class TeamCompWindow : Window, IDisposable
     public string[] SquadNames { get; set; } = Array.Empty<string>();
     public uint[] SquadCurrentHp { get; set; } = Array.Empty<uint>();
     public uint[] SquadMaxHp { get; set; } = Array.Empty<uint>();
-    public string[] BoardLayoutEventDiagnostic { get; set; } = Array.Empty<string>();
     public string TopEnemyWeakness { get; set; } = string.Empty;
     public bool TeamCompositionVisible { get; set; }
+    public bool BoardLayoutVisible { get; set; }
     public bool HasActivePet { get; set; }
     public Action<int>? SquadRowClicked { get; set; }
     public Action? SummonHorn1Requested { get; set; }
+    public Action? CommenceBattleRequested { get; set; }
 
     public TeamCompWindow()
         : base("Splash Crucible##Main")
@@ -75,12 +76,11 @@ public sealed class TeamCompWindow : Window, IDisposable
         if (!TeamCompositionVisible)
             ImGui.TextDisabled("Open Team Composition to select a BST from Squad.");
 
-        if (BoardLayoutEventDiagnostic.Length > 0)
+        if (BoardLayoutVisible)
         {
             ImGui.Spacing();
-            DrawSectionHeader("Board Layout events (temporary diagnostic)");
-            foreach (var value in BoardLayoutEventDiagnostic)
-                ImGui.TextUnformatted(value);
+            if (ImGui.Button("Commence Battle"))
+                CommenceBattleRequested?.Invoke();
         }
 
         ImGui.Spacing();
