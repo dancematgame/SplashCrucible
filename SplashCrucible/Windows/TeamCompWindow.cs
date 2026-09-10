@@ -17,6 +17,7 @@ public sealed class TeamCompWindow : Window, IDisposable
 {
     public CrucibleMode CurrentMode { get; set; } = CrucibleMode.Unknown;
     public string[] ActiveXbmAddons { get; set; } = Array.Empty<string>();
+    public string[] PetPartyStringValues { get; set; } = Array.Empty<string>();
 
     public TeamCompWindow()
         : base("Splash Crucible##Main")
@@ -48,8 +49,28 @@ public sealed class TeamCompWindow : Window, IDisposable
         ImGui.TextUnformatted("Splash Debug");
         ImGui.Separator();
         ImGui.TextUnformatted($"Mode: {modeText}");
+
         ImGui.Spacing();
-        ImGui.TextUnformatted("Active XBM addons:");
+        ImGui.SeparatorText("Current Party");
+        ImGui.TextUnformatted("Horn 1: (unresolved)");
+        ImGui.TextUnformatted("Horn 2: (unresolved)");
+        ImGui.TextUnformatted("Horn 3: (unresolved)");
+
+        ImGui.Spacing();
+        ImGui.SeparatorText("XBMPetParty string values");
+
+        if (PetPartyStringValues.Length == 0)
+        {
+            ImGui.TextDisabled("Open Team Composition to inspect Horn values.");
+        }
+        else
+        {
+            foreach (var value in PetPartyStringValues)
+                ImGui.BulletText(value);
+        }
+
+        ImGui.Spacing();
+        ImGui.SeparatorText("Active XBM addons");
 
         if (ActiveXbmAddons.Length == 0)
         {
