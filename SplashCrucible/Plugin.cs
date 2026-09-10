@@ -80,6 +80,10 @@ public sealed class Plugin : IDalamudPlugin
         uint nodeId = 0;
         nint target = nint.Zero;
         nint listener = nint.Zero;
+        var eventData = receiveArgs.AtkEventData;
+        var listSelectedIndex = -1;
+        var rendererIndex = -1;
+        var hoveredIndex3 = -1;
 
         if (receiveArgs.AtkEvent != nint.Zero)
         {
@@ -92,6 +96,16 @@ public sealed class Plugin : IDalamudPlugin
                 nodeId = atkEvent->Node->NodeId;
         }
 
+        if (receiveArgs.AtkEventData != nint.Zero)
+        {
+            var data = (AtkEventData*)receiveArgs.AtkEventData;
+            listSelectedIndex = data->ListItemData.SelectedIndex;
+            hoveredIndex3 = data->ListItemData.HoveredItemIndex3;
+
+            if (data->ListItemData.ListItemRenderer != null)
+                rendererIndex = data->ListItemData.ListItemRenderer->ListItemIndex;
+        }
+
         var diagnostic = new PetPartyUiEvent(
             receiveArgs.AtkEventType.ToString(),
             receiveArgs.EventParam,
@@ -99,7 +113,10 @@ public sealed class Plugin : IDalamudPlugin
             nodeId,
             target,
             listener,
-            receiveArgs.AtkEventData);
+            eventData,
+            listSelectedIndex,
+            rendererIndex,
+            hoveredIndex3);
 
         mainWindow.AddPetPartyUiEvent(diagnostic);
 
@@ -110,14 +127,14 @@ public sealed class Plugin : IDalamudPlugin
         }
 
         Log.Information(
-            "XBMPetParty UI EVENT: Type={EventType}, EventParam={EventParam}, AtkEventParam={AtkEventParam}, NodeId={NodeId}, Target=0x{Target:X}, Listener=0x{Listener:X}, EventData=0x{EventData:X}",
+            "XBMPetParty UI EVENT: Type={EventType}, EventParam={EventParam}, AtkEventParam={AtkEventParam}, NodeId={NodeId}, SelectedIndex={SelectedIndex}, RendererIndex={RendererIndex}, HoveredIndex3={HoveredIndex3}",
             diagnostic.EventType,
             diagnostic.EventParam,
             diagnostic.AtkEventParam,
             diagnostic.NodeId,
-            diagnostic.Target,
-            diagnostic.Listener,
-            diagnostic.EventData);
+            diagnostic.ListSelectedIndex,
+            diagnostic.RendererIndex,
+            diagnostic.HoveredIndex3);
     }
 
     private void OnFrameworkUpdate(IFramework framework)
