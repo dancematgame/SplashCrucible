@@ -42,9 +42,10 @@ Current mode targets:
 - The current build includes diagnostic support for observing active XBM addons.
 - Earlier semantic mode guesses were intentionally rolled back where evidence showed they were incorrect.
 - The next mode-detection task is to derive reliable context rules from actual observed UI/game state rather than single-addon guesses.
-- **Current Party** now reads the 12 `XBMPetParty` rows and displays the BST assigned to Horn 1 / Horn 2 / Horn 3.
-- Horn names update live while Team Composition is open.
-- The most recently read Horn assignments are cached in plugin memory so Current Party remains visible after the native Team Composition window closes.
+- **Current Party** reads the 12 `XBMPetParty` rows and displays the BST assigned to Horn 1 / Horn 2 / Horn 3.
+- **Current Squad** is displayed directly below Current Party and lists all 12 BST names in Team Composition row order.
+- Horn names and squad names update live while Team Composition is open.
+- The most recently read Horn assignments and squad list are cached in plugin memory so they remain visible after the native Team Composition window closes.
 - The temporary `AtkValue` before/after comparator has been removed now that the row and assignment mapping is confirmed.
 
 ## Immediate diagnostic targets
@@ -57,12 +58,13 @@ Capture/compare the active XBM addon set in:
 
 If Combat does not expose a unique XBM addon, detect it via another reliable game-state signal.
 
-### Current Party validation
+### Current Party / Current Squad validation
 Verify that:
 1. Assigning a BST to Horn 1 immediately updates Current Party Horn 1.
 2. Assigning BSTs to Horn 2 and Horn 3 updates the corresponding entries.
 3. Replacing or clearing an assignment updates the correct Horn.
-4. Closing Team Composition leaves the last known Horn assignments visible in Splash Crucible.
+4. Current Squad shows all 12 BST names in the same order as Team Composition.
+5. Closing Team Composition leaves the last known Horn assignments and Current Squad visible in Splash Crucible.
 
 ## Local workflow
 Repository: `https://github.com/dancematgame/SplashCrucible`
