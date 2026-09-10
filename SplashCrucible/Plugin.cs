@@ -34,6 +34,8 @@ public sealed class Plugin : IDalamudPlugin
     private readonly HashSet<string> activeXbmAddons = new(StringComparer.Ordinal);
     private string[] cachedHornNames = { "(unassigned)", "(unassigned)", "(unassigned)" };
     private string[] cachedSquadNames = Enumerable.Repeat("(unknown)", PartyRowCount).ToArray();
+    private string[]? pendingClickSnapshot;
+    private bool comparePendingClickOnNextFrame;
 
     public Plugin()
     {
@@ -93,6 +95,13 @@ public sealed class Plugin : IDalamudPlugin
             nodeId);
 
         mainWindow.AddPetPartyUiEvent(diagnostic);
+
+        if (string.Equals(diagnostic.EventType, "ListItemClick", StringComparison.Ordinal))
+        {
+            pendingClickSnapshot = CapturePetPartyAtkValues();
+            comparePendingClickOnNextFrame = pendingClickSnapshot != null;
+        }
+
         Log.Information(
             "XBMPetParty UI EVENT: Type={EventType}, EventParam={EventParam}, AtkEventParam={AtkEventParam}, NodeId={NodeId}",
             diagnostic.EventType,
@@ -105,13 +114,16 @@ public sealed class Plugin : IDalamudPlugin
     {
         mainWindow.IsOpen = true;
 
+        if (comparePendingClickOnNextFrame)
+        {
+            comparePendingClickOnNextFrame = false;
+            ComparePendingClickSnapshot();
+        }
+
         var teamPartyVisible = GameGui.GetAddonByName(TeamCompositionAddonName) != nint.Zero;
         var boardSelectionVisible = GameGui.GetAddonByName(BoardSelectionAddonName) != nint.Zero;
         var inInstanceHudVisible = GameGui.GetAddonByName(InInstanceHudAddonName) != nint.Zero;
 
-        // Only label states we can currently identify with confidence.
-        // XBMContentsMainHUD exists during multiple in-instance phases, so Map vs Combat
-        // remains intentionally unresolved until we observe a distinguishing marker.
         if (teamPartyVisible && !inInstanceHudVisible)
             mainWindow.CurrentMode = CrucibleMode.TeamSelection;
         else if (inInstanceHudVisible)
@@ -128,6 +140,65 @@ public sealed class Plugin : IDalamudPlugin
         mainWindow.SquadNames = cachedSquadNames.ToArray();
         mainWindow.TeamCompositionVisible = teamPartyVisible;
         mainWindow.ActiveXbmAddons = activeXbmAddons.OrderBy(x => x, StringComparer.Ordinal).ToArray();
+    }
+
+    private unsafe string[]? CapturePetPartyAtkValues()
+    {
+        var addon = GameGui.GetAddonByName<AtkUnitBase>(TeamCompositionAddonName);
+        if (addon == null || addon->AtkValues == null || addon->AtkValuesCount == 0)
+            return null;
+
+        var values = new string[addon->AtkValuesCount];
+        for (var i = 0; i < values.Length; i++)
+            values[i] = FormatAtkValue(addon->AtkValues[i]);
+
+        return values;
+    }
+
+    private void ComparePendingClickSnapshot()
+    {
+        var before = pendingClickSnapshot;
+        pendingClickSnapshot = null;
+        if (before == null)
+            return;
+
+        var after = CapturePetPartyAtkValues();
+        if (after == null)
+        {
+            mainWindow.SetPetPartyAtkValueChanges(new[] { "Team Composition closed before comparison." });
+            return;
+        }
+
+        var changes = new List<string>();
+        var count = Math.Min(before.Length, after.Length);
+        for (var i = 0; i < count; i++)
+        {
+            if (!string.Equals(before[i], after[i], StringComparison.Ordinal))
+                changes.Add($"[{i}] {before[i]} -> {after[i]}");
+        }
+
+        if (before.Length != after.Length)
+            changes.Add($"AtkValuesCount {before.Length} -> {after.Length}");
+
+        mainWindow.SetPetPartyAtkValueChanges(changes.Count == 0
+            ? new[] { "No AtkValue changes detected after ListItemClick." }
+            : changes.ToArray());
+    }
+
+    private static string FormatAtkValue(AtkValue value)
+    {
+        var type = value.Type & AtkValueType.TypeMask;
+        return type switch
+        {
+            AtkValueType.Bool => $"Bool:{value.Byte != 0}",
+            AtkValueType.Int => $"Int:{value.Int}",
+            AtkValueType.UInt => $"UInt:{value.UInt}",
+            AtkValueType.Int64 => $"Int64:{value.Int64}",
+            AtkValueType.UInt64 => $"UInt64:{value.UInt64}",
+            AtkValueType.Float => $"Float:{value.Float:R}",
+            AtkValueType.String or AtkValueType.WideString or AtkValueType.ConstString => $"String:{value.GetValueAsString()}",
+            _ => $"Type:{value.Type}",
+        };
     }
 
     private unsafe void TryUpdateCurrentParty()
