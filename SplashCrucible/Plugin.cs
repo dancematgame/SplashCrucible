@@ -1,5 +1,3 @@
-using Dalamud.Game.Addon.Lifecycle;
-using Dalamud.Game.Addon.Lifecycle.AddonArgTypes;
 using Dalamud.IoC;
 using Dalamud.Interface.Windowing;
 using Dalamud.Plugin;
@@ -13,22 +11,12 @@ public sealed class Plugin : IDalamudPlugin
     [PluginService] internal static IDalamudPluginInterface PluginInterface { get; private set; } = null!;
     [PluginService] internal static IGameGui GameGui { get; private set; } = null!;
     [PluginService] internal static IFramework Framework { get; private set; } = null!;
-    [PluginService] internal static IAddonLifecycle AddonLifecycle { get; private set; } = null!;
     [PluginService] internal static IPluginLog Log { get; private set; } = null!;
+
+    private const string TeamCompositionAddonName = "XBMPetParty";
 
     private readonly WindowSystem windowSystem = new("SplashCrucible");
     private readonly TeamCompWindow teamCompWindow;
-
-    // Temporary until the exact internal Team Composition addon name is identified.
-    private static readonly string[] CandidateAddonNames =
-    {
-        "XBMContentsMainHUD",
-        "XBMTeamComposition",
-        "XBMTeamComp",
-        "XBMParty",
-        "XBMPartyEdit",
-        "XBMFormation",
-    };
 
     public Plugin()
     {
@@ -38,37 +26,16 @@ public sealed class Plugin : IDalamudPlugin
         PluginInterface.UiBuilder.Draw += windowSystem.Draw;
         Framework.Update += OnFrameworkUpdate;
 
-        // Diagnostic: log every addon as it is created so the Team Composition
-        // addon can be identified without guessing its internal name.
-        AddonLifecycle.RegisterListener(AddonEvent.PostSetup, OnAddonPostSetup);
-
-        Log.Information("Splash Crucible loaded. Addon-name diagnostic enabled.");
-    }
-
-    private void OnAddonPostSetup(AddonEvent type, AddonArgs args)
-    {
-        Log.Information("ADDON OPEN: {AddonName}", args.AddonName);
+        Log.Information("Splash Crucible loaded. Team Composition addon: {AddonName}", TeamCompositionAddonName);
     }
 
     private void OnFrameworkUpdate(IFramework framework)
     {
-        var teamCompositionVisible = false;
-
-        foreach (var addonName in CandidateAddonNames)
-        {
-            if (GameGui.GetAddonByName(addonName) != nint.Zero)
-            {
-                teamCompositionVisible = true;
-                break;
-            }
-        }
-
-        teamCompWindow.IsOpen = teamCompositionVisible;
+        teamCompWindow.IsOpen = GameGui.GetAddonByName(TeamCompositionAddonName) != nint.Zero;
     }
 
     public void Dispose()
     {
-        AddonLifecycle.UnregisterListener(AddonEvent.PostSetup, OnAddonPostSetup);
         Framework.Update -= OnFrameworkUpdate;
         PluginInterface.UiBuilder.Draw -= windowSystem.Draw;
         windowSystem.RemoveAllWindows();
