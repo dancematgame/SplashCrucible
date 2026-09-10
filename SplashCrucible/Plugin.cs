@@ -37,11 +37,7 @@ public sealed class Plugin : IDalamudPlugin
 
     public Plugin()
     {
-        mainWindow = new TeamCompWindow
-        {
-            SquadRowClicked = SelectTeamCompositionRow,
-        };
-
+        mainWindow = new TeamCompWindow();
         windowSystem.AddWindow(mainWindow);
         mainWindow.IsOpen = true;
 
@@ -50,8 +46,9 @@ public sealed class Plugin : IDalamudPlugin
 
         AddonLifecycle.RegisterListener(AddonEvent.PostSetup, OnAddonPostSetup);
         AddonLifecycle.RegisterListener(AddonEvent.PreFinalize, OnAddonPreFinalize);
+        AddonLifecycle.RegisterListener(AddonEvent.PreReceiveEvent, TeamCompositionAddonName, OnPetPartyReceiveEvent);
 
-        Log.Information("Splash Crucible loaded. XBM state diagnostic enabled.");
+        Log.Information("Splash Crucible loaded. Native Team Composition click diagnostic enabled.");
     }
 
     private void OnAddonPostSetup(AddonEvent type, AddonArgs args)
@@ -70,6 +67,35 @@ public sealed class Plugin : IDalamudPlugin
 
         activeXbmAddons.Remove(args.AddonName);
         Log.Information("XBM CLOSE: {AddonName}", args.AddonName);
+    }
+
+    private unsafe void OnPetPartyReceiveEvent(AddonEvent type, AddonArgs args)
+    {
+        if (args is not AddonReceiveEventArgs receiveArgs ||
+            receiveArgs.AtkEventType != AtkEventType.ListItemClick ||
+            receiveArgs.AtkEventData == nint.Zero)
+            return;
+
+        var data = (AtkEventData*)receiveArgs.AtkEventData;
+        var listData = data->ListItemData;
+        var rendererIndex = listData.ListItemRenderer != null
+            ? listData.ListItemRenderer->ListItemIndex
+            : -1;
+
+        var click = new PetPartyClickEvent(
+            listData.SelectedIndex,
+            rendererIndex,
+            listData.MouseButtonId,
+            listData.MouseModifier.ToString());
+
+        mainWindow.AddPetPartyClickEvent(click);
+
+        Log.Information(
+            "XBMPetParty ListItemClick: SelectedIndex={SelectedIndex}, RendererIndex={RendererIndex}, MouseButtonId={MouseButtonId}, MouseModifier={MouseModifier}",
+            click.SelectedIndex,
+            click.RendererIndex,
+            click.MouseButtonId,
+            click.MouseModifier);
     }
 
     private void OnFrameworkUpdate(IFramework framework)
@@ -96,54 +122,6 @@ public sealed class Plugin : IDalamudPlugin
         mainWindow.SquadNames = cachedSquadNames.ToArray();
         mainWindow.TeamCompositionVisible = teamPartyVisible;
         mainWindow.ActiveXbmAddons = activeXbmAddons.OrderBy(x => x, StringComparer.Ordinal).ToArray();
-    }
-
-    private unsafe void SelectTeamCompositionRow(int row)
-    {
-        if (row < 0 || row >= PartyRowCount)
-            return;
-
-        var addon = GameGui.GetAddonByName<AtkUnitBase>(TeamCompositionAddonName);
-        if (addon == null)
-            return;
-
-        var list = FindTeamCompositionList(addon);
-        if (list == null)
-        {
-            Log.Warning("Could not locate the 12-row XBMPetParty list component.");
-            return;
-        }
-
-        // SelectItem(..., true) only changed the list's selection state and did not
-        // reproduce the native row-click behavior in XBMPetParty. We observed that
-        // real row activation arrives as AtkEventType.ListItemClick with the row index
-        // in the list-item event data, so dispatch that exact local list event instead.
-        // This remains entirely inside the native Team Composition UI path.
-        list->DispatchItemEvent(row, AtkEventType.ListItemClick);
-    }
-
-    private static unsafe AtkComponentList* FindTeamCompositionList(AtkUnitBase* addon)
-    {
-        if (addon->UldManager.NodeList == null)
-            return null;
-
-        for (var i = 0; i < addon->UldManager.NodeListCount; i++)
-        {
-            var node = addon->UldManager.NodeList[i];
-            if (node == null || node->GetNodeType() != NodeType.Component)
-                continue;
-
-            var componentNode = (AtkComponentNode*)node;
-            var component = componentNode->Component;
-            if (component == null || component->GetComponentType() != ComponentType.List)
-                continue;
-
-            var list = (AtkComponentList*)component;
-            if (list->ListLength == PartyRowCount)
-                return list;
-        }
-
-        return null;
     }
 
     private unsafe void TryUpdateCurrentParty()
@@ -193,6 +171,7 @@ public sealed class Plugin : IDalamudPlugin
     {
         AddonLifecycle.UnregisterListener(AddonEvent.PostSetup, OnAddonPostSetup);
         AddonLifecycle.UnregisterListener(AddonEvent.PreFinalize, OnAddonPreFinalize);
+        AddonLifecycle.UnregisterListener(AddonEvent.PreReceiveEvent, TeamCompositionAddonName, OnPetPartyReceiveEvent);
         Framework.Update -= OnFrameworkUpdate;
         PluginInterface.UiBuilder.Draw -= windowSystem.Draw;
         windowSystem.RemoveAllWindows();
