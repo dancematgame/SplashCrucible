@@ -22,6 +22,7 @@ public sealed class TeamCompWindow : Window, IDisposable
     public string[] ActiveXbmAddons { get; set; } = Array.Empty<string>();
     public string[] HornNames { get; set; } = { "(unassigned)", "(unassigned)", "(unassigned)" };
     public string[] SquadNames { get; set; } = Array.Empty<string>();
+    public string[] BoardLayoutAtkValues { get; set; } = Array.Empty<string>();
     public bool TeamCompositionVisible { get; set; }
     public Action<int>? SquadRowClicked { get; set; }
 
@@ -38,9 +39,7 @@ public sealed class TeamCompWindow : Window, IDisposable
         RespectCloseHotkey = false;
     }
 
-    public void Dispose()
-    {
-    }
+    public void Dispose() { }
 
     public override void Draw()
     {
@@ -64,16 +63,24 @@ public sealed class TeamCompWindow : Window, IDisposable
 
         ImGui.Spacing();
         DrawSectionHeader("Current Squad");
-
         for (var i = 0; i < 12; i++)
             DrawSquadRow(i, GetSquadName(i));
 
         if (!TeamCompositionVisible)
             ImGui.TextDisabled("Open Team Composition to select a BST from Current Squad.");
 
+        if (BoardLayoutAtkValues.Length > 0)
+        {
+            ImGui.Spacing();
+            DrawSectionHeader("Board Layout AtkValues (temporary diagnostic)");
+            ImGui.BeginChild("##BoardLayoutAtkValues", new Vector2(0, 220), true);
+            foreach (var value in BoardLayoutAtkValues)
+                ImGui.TextUnformatted(value);
+            ImGui.EndChild();
+        }
+
         ImGui.Spacing();
         DrawSectionHeader("Active XBM addons");
-
         if (ActiveXbmAddons.Length == 0)
         {
             ImGui.TextDisabled("(none observed)");
@@ -113,41 +120,21 @@ public sealed class TeamCompWindow : Window, IDisposable
     private static void DrawMetadataRow(string firstColumn, string metadataName, bool bold)
     {
         var startX = ImGui.GetCursorPosX();
-
         DrawText(firstColumn, bold);
 
         if (!PetMetadata.TryGet(metadataName, out var metadata))
         {
-            ImGui.SameLine();
-            ImGui.SetCursorPosX(startX + 170f);
-            DrawDisabledText("●", bold);
-            ImGui.SameLine();
-            ImGui.SetCursorPosX(startX + 195f);
-            DrawDisabledText("?", bold);
-            ImGui.SameLine();
-            ImGui.SetCursorPosX(startX + 235f);
-            DrawDisabledText("—", bold);
-            ImGui.SameLine();
-            ImGui.SetCursorPosX(startX + 365f);
-            DrawDisabledText("—", bold);
+            ImGui.SameLine(); ImGui.SetCursorPosX(startX + 170f); DrawDisabledText("●", bold);
+            ImGui.SameLine(); ImGui.SetCursorPosX(startX + 195f); DrawDisabledText("?", bold);
+            ImGui.SameLine(); ImGui.SetCursorPosX(startX + 235f); DrawDisabledText("—", bold);
+            ImGui.SameLine(); ImGui.SetCursorPosX(startX + 365f); DrawDisabledText("—", bold);
             return;
         }
 
-        ImGui.SameLine();
-        ImGui.SetCursorPosX(startX + 170f);
-        DrawColoredText(GetColour(metadata.Colour), "●", bold);
-
-        ImGui.SameLine();
-        ImGui.SetCursorPosX(startX + 195f);
-        DrawAspectIcon(metadata.Aspect);
-
-        ImGui.SameLine();
-        ImGui.SetCursorPosX(startX + 235f);
-        DrawText(DisplayOrDash(metadata.BorrowType), bold);
-
-        ImGui.SameLine();
-        ImGui.SetCursorPosX(startX + 365f);
-        DrawText(DisplayOrDash(metadata.TemperedReleaseType), bold);
+        ImGui.SameLine(); ImGui.SetCursorPosX(startX + 170f); DrawColoredText(GetColour(metadata.Colour), "●", bold);
+        ImGui.SameLine(); ImGui.SetCursorPosX(startX + 195f); DrawAspectIcon(metadata.Aspect);
+        ImGui.SameLine(); ImGui.SetCursorPosX(startX + 235f); DrawText(DisplayOrDash(metadata.BorrowType), bold);
+        ImGui.SameLine(); ImGui.SetCursorPosX(startX + 365f); DrawText(DisplayOrDash(metadata.TemperedReleaseType), bold);
     }
 
     private static void DrawAspectIcon(string aspect)
@@ -167,27 +154,15 @@ public sealed class TeamCompWindow : Window, IDisposable
             _ => BitmapFontIcon.None,
         };
 
-        if (icon == BitmapFontIcon.None)
-        {
-            ImGui.TextDisabled("?");
-        }
-        else
-        {
-            ImGuiHelpers.CompileSeStringWrapped($"<icon({(int)icon})>");
-        }
+        if (icon == BitmapFontIcon.None) ImGui.TextDisabled("?");
+        else ImGuiHelpers.CompileSeStringWrapped($"<icon({(int)icon})>");
 
-        if (ImGui.IsItemHovered())
-            ImGui.SetTooltip($"Auto-attack: {aspect}");
+        if (ImGui.IsItemHovered()) ImGui.SetTooltip($"Auto-attack: {aspect}");
     }
 
     private static void DrawText(string text, bool bold)
     {
-        if (!bold)
-        {
-            ImGui.TextUnformatted(text);
-            return;
-        }
-
+        if (!bold) { ImGui.TextUnformatted(text); return; }
         var pos = ImGui.GetCursorScreenPos();
         var colour = ImGui.GetColorU32(ImGuiCol.Text);
         ImGui.TextUnformatted(text);
@@ -196,12 +171,7 @@ public sealed class TeamCompWindow : Window, IDisposable
 
     private static void DrawDisabledText(string text, bool bold)
     {
-        if (!bold)
-        {
-            ImGui.TextDisabled(text);
-            return;
-        }
-
+        if (!bold) { ImGui.TextDisabled(text); return; }
         var pos = ImGui.GetCursorScreenPos();
         var colour = ImGui.GetColorU32(ImGuiCol.TextDisabled);
         ImGui.TextDisabled(text);
@@ -210,42 +180,24 @@ public sealed class TeamCompWindow : Window, IDisposable
 
     private static void DrawColoredText(Vector4 colour, string text, bool bold)
     {
-        if (!bold)
-        {
-            ImGui.TextColored(colour, text);
-            return;
-        }
-
+        if (!bold) { ImGui.TextColored(colour, text); return; }
         var pos = ImGui.GetCursorScreenPos();
         ImGui.TextColored(colour, text);
-        ImGui.GetWindowDrawList().AddText(
-            new Vector2(pos.X + 0.75f, pos.Y),
-            ImGui.ColorConvertFloat4ToU32(colour),
-            text);
+        ImGui.GetWindowDrawList().AddText(new Vector2(pos.X + 0.75f, pos.Y), ImGui.ColorConvertFloat4ToU32(colour), text);
     }
 
-    private static Vector4 GetColour(string colour)
-        => colour switch
-        {
-            "Red" => new Vector4(1.00f, 0.25f, 0.25f, 1.00f),
-            "Blue" => new Vector4(0.30f, 0.55f, 1.00f, 1.00f),
-            "Yellow" => new Vector4(1.00f, 0.85f, 0.20f, 1.00f),
-            "Green" => new Vector4(0.30f, 0.85f, 0.35f, 1.00f),
-            _ => new Vector4(0.65f, 0.65f, 0.65f, 1.00f),
-        };
+    private static Vector4 GetColour(string colour) => colour switch
+    {
+        "Red" => new Vector4(1.00f, 0.25f, 0.25f, 1.00f),
+        "Blue" => new Vector4(0.30f, 0.55f, 1.00f, 1.00f),
+        "Yellow" => new Vector4(1.00f, 0.85f, 0.20f, 1.00f),
+        "Green" => new Vector4(0.30f, 0.85f, 0.35f, 1.00f),
+        _ => new Vector4(0.65f, 0.65f, 0.65f, 1.00f),
+    };
 
-    private static string DisplayOrDash(string value)
-        => string.IsNullOrWhiteSpace(value) ? "—" : value;
-
-    private string GetHornName(int index)
-        => HornNames.Length > index && !string.IsNullOrWhiteSpace(HornNames[index])
-            ? HornNames[index]
-            : "(unassigned)";
-
-    private string GetSquadName(int index)
-        => SquadNames.Length > index && !string.IsNullOrWhiteSpace(SquadNames[index])
-            ? SquadNames[index]
-            : "(unknown)";
+    private static string DisplayOrDash(string value) => string.IsNullOrWhiteSpace(value) ? "—" : value;
+    private string GetHornName(int index) => HornNames.Length > index && !string.IsNullOrWhiteSpace(HornNames[index]) ? HornNames[index] : "(unassigned)";
+    private string GetSquadName(int index) => SquadNames.Length > index && !string.IsNullOrWhiteSpace(SquadNames[index]) ? SquadNames[index] : "(unknown)";
 
     private static void DrawSectionHeader(string text)
     {
