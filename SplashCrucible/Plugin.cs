@@ -23,7 +23,6 @@ public sealed class Plugin : IDalamudPlugin
     [PluginService] internal static IPluginLog Log { get; private set; } = null!;
 
     private const string TeamCompositionAddonName = "XBMPetParty";
-    private const string BoardSelectionAddonName = "XBMStageMap";
     private const string BoardLayoutAddonName = "XBMStageDetailList";
     private const string InInstanceHudAddonName = "XBMContentsMainHUD";
 
@@ -38,6 +37,7 @@ public sealed class Plugin : IDalamudPlugin
 
     private const byte VkNumpad6 = 0x66;
     private const uint KeyeventfKeyup = 0x0002;
+    private static readonly TimeSpan ArenaAutoSummonDelay = TimeSpan.FromMilliseconds(750);
 
     private static readonly string[] KnownWeaknesses =
     {
@@ -55,8 +55,9 @@ public sealed class Plugin : IDalamudPlugin
     private string cachedTopEnemyName = string.Empty;
     private string cachedTopEnemyWeakness = string.Empty;
     private bool syntheticTeamCompositionClick;
-    private bool autoSummonAttemptedForCurrentBoard;
     private bool arenaEnteredForCurrentBoard;
+    private bool autoSummonCompletedForCurrentBoard;
+    private DateTime? pendingArenaAutoSummonAt;
 
     public Plugin()
     {
@@ -64,7 +65,6 @@ public sealed class Plugin : IDalamudPlugin
         {
             SquadRowClicked = SelectTeamCompositionRow,
             SummonHorn1Requested = SummonHorn1,
-            CommenceBattleRequested = CommenceBattle,
         };
 
         windowSystem.AddWindow(mainWindow);
@@ -87,8 +87,9 @@ public sealed class Plugin : IDalamudPlugin
 
         if (args.AddonName == BoardLayoutAddonName)
         {
-            autoSummonAttemptedForCurrentBoard = false;
             arenaEnteredForCurrentBoard = false;
+            autoSummonCompletedForCurrentBoard = false;
+            pendingArenaAutoSummonAt = null;
         }
 
         activeXbmAddons.Add(args.AddonName);
@@ -125,7 +126,6 @@ public sealed class Plugin : IDalamudPlugin
         mainWindow.IsOpen = true;
 
         var teamPartyVisible = GameGui.GetAddonByName(TeamCompositionAddonName) != nint.Zero;
-        var boardSelectionVisible = GameGui.GetAddonByName(BoardSelectionAddonName) != nint.Zero;
         var boardLayoutVisible = GameGui.GetAddonByName(BoardLayoutAddonName) != nint.Zero;
         var inInstanceHudVisible = GameGui.GetAddonByName(InInstanceHudAddonName) != nint.Zero;
 
@@ -138,20 +138,25 @@ public sealed class Plugin : IDalamudPlugin
         if (!inInstanceHudVisible)
         {
             arenaEnteredForCurrentBoard = false;
+            pendingArenaAutoSummonAt = null;
         }
-        else if (!boardLayoutVisible && IsCachedTopEnemyPresent())
+        else if (!boardLayoutVisible && !arenaEnteredForCurrentBoard && IsCachedTopEnemyPresent())
         {
             arenaEnteredForCurrentBoard = true;
+
+            if (!autoSummonCompletedForCurrentBoard && !HasOwnedSquadPet())
+            {
+                pendingArenaAutoSummonAt = DateTime.UtcNow + ArenaAutoSummonDelay;
+                Log.Information("Arena detected from cached enemy {EnemyName}; Horn 1 auto-summon queued.", cachedTopEnemyName);
+            }
         }
 
-        TryAutoSummonHorn1(inInstanceHudVisible, boardLayoutVisible);
+        TryRunPendingArenaAutoSummon(inInstanceHudVisible);
 
         if (teamPartyVisible && !inInstanceHudVisible)
-            mainWindow.CurrentMode = CrucibleMode.TeamSelection;
+            mainWindow.CurrentMode = CrucibleMode.SelectSquad;
         else if (inInstanceHudVisible)
             mainWindow.CurrentMode = arenaEnteredForCurrentBoard ? CrucibleMode.Arena : CrucibleMode.Map;
-        else if (boardSelectionVisible)
-            mainWindow.CurrentMode = CrucibleMode.BoardSelection;
         else
             mainWindow.CurrentMode = CrucibleMode.Unknown;
 
@@ -162,8 +167,28 @@ public sealed class Plugin : IDalamudPlugin
         mainWindow.TopEnemyWeakness = cachedTopEnemyWeakness;
         mainWindow.TeamCompositionVisible = teamPartyVisible;
         mainWindow.HasActivePet = HasOwnedSquadPet();
-        mainWindow.BoardLayoutVisible = boardLayoutVisible;
         mainWindow.ActiveXbmAddons = activeXbmAddons.OrderBy(x => x, StringComparer.Ordinal).ToArray();
+    }
+
+    private void TryRunPendingArenaAutoSummon(bool inInstanceHudVisible)
+    {
+        if (pendingArenaAutoSummonAt is null || DateTime.UtcNow < pendingArenaAutoSummonAt.Value)
+            return;
+
+        pendingArenaAutoSummonAt = null;
+        autoSummonCompletedForCurrentBoard = true;
+
+        if (!inInstanceHudVisible || !arenaEnteredForCurrentBoard)
+            return;
+
+        if (HasOwnedSquadPet())
+        {
+            Log.Information("Arena Horn 1 auto-summon skipped because an active squad BST is present.");
+            return;
+        }
+
+        Log.Information("Arena entered with no active squad BST; auto-summoning Horn 1.");
+        SendNumpad6();
     }
 
     private bool HasOwnedSquadPet()
@@ -212,23 +237,6 @@ public sealed class Plugin : IDalamudPlugin
         return false;
     }
 
-    private void TryAutoSummonHorn1(bool inInstanceHudVisible, bool boardLayoutVisible)
-    {
-        if (autoSummonAttemptedForCurrentBoard || !inInstanceHudVisible || boardLayoutVisible)
-            return;
-
-        if (!IsCachedTopEnemyPresent())
-            return;
-
-        autoSummonAttemptedForCurrentBoard = true;
-
-        if (HasOwnedSquadPet())
-            return;
-
-        Log.Information("Top Board Layout enemy {EnemyName} is present with no active BST; auto-summoning Horn 1.", cachedTopEnemyName);
-        SendNumpad6();
-    }
-
     private void SummonHorn1()
     {
         if (HasOwnedSquadPet())
@@ -241,15 +249,6 @@ public sealed class Plugin : IDalamudPlugin
     {
         keybd_event(VkNumpad6, 0, 0, UIntPtr.Zero);
         keybd_event(VkNumpad6, 0, KeyeventfKeyup, UIntPtr.Zero);
-    }
-
-    private unsafe void CommenceBattle()
-    {
-        var addon = GameGui.GetAddonByName<AtkUnitBase>(BoardLayoutAddonName);
-        if (addon == null)
-            return;
-
-        addon->AtkEventListener.ReceiveEvent(AtkEventType.ButtonClick, 9, null, null);
     }
 
     private unsafe void TryUpdateTopEnemyData()
