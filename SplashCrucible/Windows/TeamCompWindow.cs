@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Generic;
 using System.Numerics;
 using Dalamud.Bindings.ImGui;
 using Dalamud.Interface.Windowing;
@@ -15,13 +14,6 @@ public enum CrucibleMode
     InInstanceUnresolved,
 }
 
-public readonly record struct PetPartyClickEvent(
-    int SelectedIndex,
-    int RendererIndex,
-    byte MouseButtonId,
-    string MouseModifier,
-    bool Synthetic);
-
 public sealed class TeamCompWindow : Window, IDisposable
 {
     public CrucibleMode CurrentMode { get; set; } = CrucibleMode.Unknown;
@@ -30,8 +22,6 @@ public sealed class TeamCompWindow : Window, IDisposable
     public string[] SquadNames { get; set; } = Array.Empty<string>();
     public bool TeamCompositionVisible { get; set; }
     public Action<int>? SquadRowClicked { get; set; }
-
-    private readonly List<PetPartyClickEvent> petPartyClickEvents = new();
 
     public TeamCompWindow()
         : base("Splash Crucible##Main")
@@ -50,13 +40,6 @@ public sealed class TeamCompWindow : Window, IDisposable
     {
     }
 
-    public void AddPetPartyClickEvent(PetPartyClickEvent clickEvent)
-    {
-        petPartyClickEvents.Insert(0, clickEvent);
-        if (petPartyClickEvents.Count > 12)
-            petPartyClickEvents.RemoveRange(12, petPartyClickEvents.Count - 12);
-    }
-
     public override void Draw()
     {
         var modeText = CurrentMode switch
@@ -73,36 +56,18 @@ public sealed class TeamCompWindow : Window, IDisposable
 
         ImGui.Spacing();
         DrawSectionHeader("Current Party");
-        ImGui.TextUnformatted($"Horn 1: {GetHornName(0)}");
-        ImGui.TextUnformatted($"Horn 2: {GetHornName(1)}");
-        ImGui.TextUnformatted($"Horn 3: {GetHornName(2)}");
+        DrawPartyRow(0);
+        DrawPartyRow(1);
+        DrawPartyRow(2);
 
         ImGui.Spacing();
         DrawSectionHeader("Current Squad");
-        DrawSquadHeader();
 
         for (var i = 0; i < 12; i++)
             DrawSquadRow(i, GetSquadName(i));
 
         if (!TeamCompositionVisible)
             ImGui.TextDisabled("Open Team Composition to select a BST from Current Squad.");
-
-        ImGui.Spacing();
-        DrawSectionHeader("Team Composition mouse diagnostic");
-        ImGui.TextDisabled("Synthetic Splash clicks are forced to the observed native left-click context (MouseButtonId=0, Modifier=None).");
-
-        if (ImGui.Button("Clear Clicks"))
-            petPartyClickEvents.Clear();
-
-        ImGui.SameLine();
-        ImGui.TextUnformatted($"Recorded: {petPartyClickEvents.Count}");
-
-        foreach (var clickEvent in petPartyClickEvents)
-        {
-            var source = clickEvent.Synthetic ? "Splash" : "Native";
-            ImGui.BulletText(
-                $"{source} | SelectedIndex={clickEvent.SelectedIndex} | RendererIndex={clickEvent.RendererIndex} | MouseButtonId={clickEvent.MouseButtonId} | Modifier={clickEvent.MouseModifier}");
-        }
 
         ImGui.Spacing();
         DrawSectionHeader("Active XBM addons");
@@ -117,19 +82,10 @@ public sealed class TeamCompWindow : Window, IDisposable
             ImGui.BulletText(addonName);
     }
 
-    private static void DrawSquadHeader()
+    private void DrawPartyRow(int hornIndex)
     {
-        var startX = ImGui.GetCursorPosX();
-        ImGui.TextDisabled("Name");
-        ImGui.SameLine();
-        ImGui.SetCursorPosX(startX + 170f);
-        ImGui.TextDisabled("Colour");
-        ImGui.SameLine();
-        ImGui.SetCursorPosX(startX + 235f);
-        ImGui.TextDisabled("Borrow Type");
-        ImGui.SameLine();
-        ImGui.SetCursorPosX(startX + 365f);
-        ImGui.TextDisabled("Tempered Release Type");
+        var name = GetHornName(hornIndex);
+        DrawMetadataRow($"Horn {hornIndex + 1}: {name}", name, bold: false);
     }
 
     private void DrawSquadRow(int index, string name)
@@ -145,39 +101,88 @@ public sealed class TeamCompWindow : Window, IDisposable
 
         ImGui.SetCursorPosY(rowY);
         ImGui.SetCursorPosX(startX);
-        ImGui.TextUnformatted(name);
-
-        if (!PetMetadata.TryGet(name, out var metadata))
-        {
-            ImGui.SameLine();
-            ImGui.SetCursorPosX(startX + 170f);
-            ImGui.TextDisabled("●");
-            ImGui.SameLine();
-            ImGui.SetCursorPosX(startX + 235f);
-            ImGui.TextDisabled("—");
-            ImGui.SameLine();
-            ImGui.SetCursorPosX(startX + 365f);
-            ImGui.TextDisabled("—");
-        }
-        else
-        {
-            ImGui.SameLine();
-            ImGui.SetCursorPosX(startX + 170f);
-            ImGui.TextColored(GetColour(metadata.Colour), "●");
-
-            ImGui.SameLine();
-            ImGui.SetCursorPosX(startX + 235f);
-            ImGui.TextUnformatted(DisplayOrDash(metadata.BorrowType));
-
-            ImGui.SameLine();
-            ImGui.SetCursorPosX(startX + 365f);
-            ImGui.TextUnformatted(DisplayOrDash(metadata.TemperedReleaseType));
-        }
-
+        DrawMetadataRow(name, name, bold: true);
         ImGui.SetCursorPosY(afterRowY);
 
         if (clicked && TeamCompositionVisible)
             SquadRowClicked?.Invoke(index);
+    }
+
+    private static void DrawMetadataRow(string firstColumn, string metadataName, bool bold)
+    {
+        var startX = ImGui.GetCursorPosX();
+
+        DrawText(firstColumn, bold);
+
+        if (!PetMetadata.TryGet(metadataName, out var metadata))
+        {
+            ImGui.SameLine();
+            ImGui.SetCursorPosX(startX + 170f);
+            DrawDisabledText("●", bold);
+            ImGui.SameLine();
+            ImGui.SetCursorPosX(startX + 235f);
+            DrawDisabledText("—", bold);
+            ImGui.SameLine();
+            ImGui.SetCursorPosX(startX + 365f);
+            DrawDisabledText("—", bold);
+            return;
+        }
+
+        ImGui.SameLine();
+        ImGui.SetCursorPosX(startX + 170f);
+        DrawColoredText(GetColour(metadata.Colour), "●", bold);
+
+        ImGui.SameLine();
+        ImGui.SetCursorPosX(startX + 235f);
+        DrawText(DisplayOrDash(metadata.BorrowType), bold);
+
+        ImGui.SameLine();
+        ImGui.SetCursorPosX(startX + 365f);
+        DrawText(DisplayOrDash(metadata.TemperedReleaseType), bold);
+    }
+
+    private static void DrawText(string text, bool bold)
+    {
+        if (!bold)
+        {
+            ImGui.TextUnformatted(text);
+            return;
+        }
+
+        var pos = ImGui.GetCursorScreenPos();
+        var colour = ImGui.GetColorU32(ImGuiCol.Text);
+        ImGui.TextUnformatted(text);
+        ImGui.GetWindowDrawList().AddText(new Vector2(pos.X + 0.75f, pos.Y), colour, text);
+    }
+
+    private static void DrawDisabledText(string text, bool bold)
+    {
+        if (!bold)
+        {
+            ImGui.TextDisabled(text);
+            return;
+        }
+
+        var pos = ImGui.GetCursorScreenPos();
+        var colour = ImGui.GetColorU32(ImGuiCol.TextDisabled);
+        ImGui.TextDisabled(text);
+        ImGui.GetWindowDrawList().AddText(new Vector2(pos.X + 0.75f, pos.Y), colour, text);
+    }
+
+    private static void DrawColoredText(Vector4 colour, string text, bool bold)
+    {
+        if (!bold)
+        {
+            ImGui.TextColored(colour, text);
+            return;
+        }
+
+        var pos = ImGui.GetCursorScreenPos();
+        ImGui.TextColored(colour, text);
+        ImGui.GetWindowDrawList().AddText(
+            new Vector2(pos.X + 0.75f, pos.Y),
+            ImGui.ColorConvertFloat4ToU32(colour),
+            text);
     }
 
     private static Vector4 GetColour(string colour)
