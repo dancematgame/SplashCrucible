@@ -37,13 +37,25 @@ Current mode targets:
 - Example observed row assignment indices: first row `80`, second row `157`, third row `234`.
 - See `XBM_UI_MAP.md` for the current full mapping table and confidence notes.
 
+## BST metadata
+A user-maintained 50-BST property table is being incorporated into the UI. The current code-side lookup is `SplashCrucible/Data/PetMetadata.cs` and is derived from the supplied `Pet Properties.csv`.
+
+The first visual metadata pass uses these CSV fields:
+- `Pet`
+- `Colour`
+- `Borrow Type`
+- `Tempered Release Type`
+
+Current Squad resolves metadata by BST name. Colour is rendered as a coloured circle; Borrow Type and Tempered Release Type are rendered as text. Blank metadata values display as an em dash.
+
 ## Current implementation state
 - The main Splash Crucible window is permanently visible.
 - The current build includes diagnostic support for observing active XBM addons.
 - Earlier semantic mode guesses were intentionally rolled back where evidence showed they were incorrect.
 - The next mode-detection task is to derive reliable context rules from actual observed UI/game state rather than single-addon guesses.
 - **Current Party** reads the 12 `XBMPetParty` rows and displays the BST assigned to Horn 1 / Horn 2 / Horn 3.
-- **Current Squad** is displayed directly below Current Party and lists all 12 BST names in Team Composition row order.
+- **Current Squad** is displayed directly below Current Party and lists all 12 BSTs in Team Composition row order.
+- Each Current Squad row now shows: BST name, coloured circle, Borrow Type, and Tempered Release Type.
 - Horn names and squad names update live while Team Composition is open.
 - The most recently read Horn assignments and squad list are cached in plugin memory so they remain visible after the native Team Composition window closes.
 - The temporary `AtkValue` before/after comparator has been removed now that the row and assignment mapping is confirmed.
@@ -64,7 +76,8 @@ Verify that:
 2. Assigning BSTs to Horn 2 and Horn 3 updates the corresponding entries.
 3. Replacing or clearing an assignment updates the correct Horn.
 4. Current Squad shows all 12 BST names in the same order as Team Composition.
-5. Closing Team Composition leaves the last known Horn assignments and Current Squad visible in Splash Crucible.
+5. Each known BST resolves its CSV-derived colour, Borrow Type, and Tempered Release Type correctly.
+6. Closing Team Composition leaves the last known Horn assignments and Current Squad visible in Splash Crucible.
 
 ## Local workflow
 Repository: `https://github.com/dancematgame/SplashCrucible`
