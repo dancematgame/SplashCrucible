@@ -33,6 +33,7 @@ public sealed class Plugin : IDalamudPlugin
     private readonly TeamCompWindow mainWindow;
     private readonly HashSet<string> activeXbmAddons = new(StringComparer.Ordinal);
     private string[] cachedHornNames = { "(unassigned)", "(unassigned)", "(unassigned)" };
+    private string[] cachedSquadNames = Enumerable.Repeat("(unknown)", PartyRowCount).ToArray();
 
     public Plugin()
     {
@@ -91,6 +92,7 @@ public sealed class Plugin : IDalamudPlugin
             TryUpdateCurrentParty();
 
         mainWindow.HornNames = cachedHornNames.ToArray();
+        mainWindow.SquadNames = cachedSquadNames.ToArray();
         mainWindow.ActiveXbmAddons = activeXbmAddons.OrderBy(x => x, StringComparer.Ordinal).ToArray();
     }
 
@@ -105,6 +107,7 @@ public sealed class Plugin : IDalamudPlugin
             return;
 
         var horns = new[] { "(unassigned)", "(unassigned)", "(unassigned)" };
+        var squad = new string[PartyRowCount];
 
         for (var row = 0; row < PartyRowCount; row++)
         {
@@ -115,6 +118,8 @@ public sealed class Plugin : IDalamudPlugin
             var assignmentValue = addon->AtkValues[assignmentIndex];
 
             var name = nameValue.GetValueAsString();
+            squad[row] = string.IsNullOrWhiteSpace(name) ? "(unknown)" : name;
+
             if (string.IsNullOrWhiteSpace(name))
                 continue;
 
@@ -131,6 +136,7 @@ public sealed class Plugin : IDalamudPlugin
         }
 
         cachedHornNames = horns;
+        cachedSquadNames = squad;
     }
 
     public void Dispose()
