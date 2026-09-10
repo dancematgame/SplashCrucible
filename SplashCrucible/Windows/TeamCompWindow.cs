@@ -22,6 +22,7 @@ public sealed class TeamCompWindow : Window, IDisposable
     public string[] ActiveXbmAddons { get; set; } = Array.Empty<string>();
     public string[] HornNames { get; set; } = { "(unassigned)", "(unassigned)", "(unassigned)" };
     public string[] SquadNames { get; set; } = Array.Empty<string>();
+    public string[] TeamCompositionRowDiagnostic { get; set; } = Array.Empty<string>();
     public string TopEnemyWeakness { get; set; } = string.Empty;
     public bool TeamCompositionVisible { get; set; }
     public Action<int>? SquadRowClicked { get; set; }
@@ -56,18 +57,28 @@ public sealed class TeamCompWindow : Window, IDisposable
         ImGui.TextUnformatted($"Mode: {modeText}");
 
         ImGui.Spacing();
-        DrawSectionHeader("Current Party");
+        DrawSectionHeader("Party");
         DrawPartyRow(0);
         DrawPartyRow(1);
         DrawPartyRow(2);
 
         ImGui.Spacing();
-        DrawSectionHeader("Current Squad");
+        DrawSectionHeader("Squad");
         for (var i = 0; i < 12; i++)
             DrawSquadRow(i, GetSquadName(i));
 
         if (!TeamCompositionVisible)
-            ImGui.TextDisabled("Open Team Composition to select a BST from Current Squad.");
+            ImGui.TextDisabled("Open Team Composition to select a BST from Squad.");
+
+        if (TeamCompositionRowDiagnostic.Length > 0)
+        {
+            ImGui.Spacing();
+            DrawSectionHeader("Team Composition row diagnostic (temporary)");
+            ImGui.BeginChild("##TeamCompositionRowDiagnostic", new Vector2(0, 220), true);
+            foreach (var value in TeamCompositionRowDiagnostic)
+                ImGui.TextUnformatted(value);
+            ImGui.EndChild();
+        }
 
         ImGui.Spacing();
         DrawSectionHeader("Active XBM addons");
@@ -84,7 +95,27 @@ public sealed class TeamCompWindow : Window, IDisposable
     private void DrawPartyRow(int hornIndex)
     {
         var name = GetHornName(hornIndex);
+        var startX = ImGui.GetCursorPosX();
+        var rowY = ImGui.GetCursorPosY();
+        var rowHeight = ImGui.GetTextLineHeight();
+        var rowWidth = ImGui.GetContentRegionAvail().X;
+
+        ImGui.InvisibleButton($"##PartyRow{hornIndex}", new Vector2(rowWidth, rowHeight));
+        var clicked = ImGui.IsItemClicked();
+        var afterRowY = ImGui.GetCursorPosY();
+
+        ImGui.SetCursorPosY(rowY);
+        ImGui.SetCursorPosX(startX);
         DrawMetadataRow(name, name, bold: false);
+        ImGui.SetCursorPosY(afterRowY);
+
+        if (!clicked || !TeamCompositionVisible || name == "(unassigned)")
+            return;
+
+        var squadIndex = Array.FindIndex(SquadNames,
+            squadName => string.Equals(squadName, name, StringComparison.OrdinalIgnoreCase));
+        if (squadIndex >= 0)
+            SquadRowClicked?.Invoke(squadIndex);
     }
 
     private void DrawSquadRow(int index, string name)
