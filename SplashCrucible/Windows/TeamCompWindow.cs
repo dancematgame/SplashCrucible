@@ -22,7 +22,7 @@ public sealed class TeamCompWindow : Window, IDisposable
     public string[] ActiveXbmAddons { get; set; } = Array.Empty<string>();
     public string[] HornNames { get; set; } = { "(unassigned)", "(unassigned)", "(unassigned)" };
     public string[] SquadNames { get; set; } = Array.Empty<string>();
-    public string[] BoardLayoutAtkValues { get; set; } = Array.Empty<string>();
+    public string TopEnemyWeakness { get; set; } = string.Empty;
     public bool TeamCompositionVisible { get; set; }
     public Action<int>? SquadRowClicked { get; set; }
 
@@ -69,16 +69,6 @@ public sealed class TeamCompWindow : Window, IDisposable
         if (!TeamCompositionVisible)
             ImGui.TextDisabled("Open Team Composition to select a BST from Current Squad.");
 
-        if (BoardLayoutAtkValues.Length > 0)
-        {
-            ImGui.Spacing();
-            DrawSectionHeader("Board Layout AtkValues (temporary diagnostic)");
-            ImGui.BeginChild("##BoardLayoutAtkValues", new Vector2(0, 220), true);
-            foreach (var value in BoardLayoutAtkValues)
-                ImGui.TextUnformatted(value);
-            ImGui.EndChild();
-        }
-
         ImGui.Spacing();
         DrawSectionHeader("Active XBM addons");
         if (ActiveXbmAddons.Length == 0)
@@ -117,7 +107,7 @@ public sealed class TeamCompWindow : Window, IDisposable
             SquadRowClicked?.Invoke(index);
     }
 
-    private static void DrawMetadataRow(string firstColumn, string metadataName, bool bold)
+    private void DrawMetadataRow(string firstColumn, string metadataName, bool bold)
     {
         var startX = ImGui.GetCursorPosX();
         DrawText(firstColumn, bold);
@@ -132,12 +122,17 @@ public sealed class TeamCompWindow : Window, IDisposable
         }
 
         ImGui.SameLine(); ImGui.SetCursorPosX(startX + 170f); DrawColoredText(GetColour(metadata.Colour), "●", bold);
-        ImGui.SameLine(); ImGui.SetCursorPosX(startX + 195f); DrawAspectIcon(metadata.Aspect);
+        ImGui.SameLine(); ImGui.SetCursorPosX(startX + 195f);
+        DrawAspectIcon(metadata.Aspect, IsWeaknessMatch(metadata.Aspect));
         ImGui.SameLine(); ImGui.SetCursorPosX(startX + 235f); DrawText(DisplayOrDash(metadata.BorrowType), bold);
         ImGui.SameLine(); ImGui.SetCursorPosX(startX + 365f); DrawText(DisplayOrDash(metadata.TemperedReleaseType), bold);
     }
 
-    private static void DrawAspectIcon(string aspect)
+    private bool IsWeaknessMatch(string aspect)
+        => !string.IsNullOrWhiteSpace(TopEnemyWeakness) &&
+           string.Equals(aspect, TopEnemyWeakness, StringComparison.OrdinalIgnoreCase);
+
+    private static void DrawAspectIcon(string aspect, bool highlighted)
     {
         var icon = aspect switch
         {
@@ -154,10 +149,28 @@ public sealed class TeamCompWindow : Window, IDisposable
             _ => BitmapFontIcon.None,
         };
 
-        if (icon == BitmapFontIcon.None) ImGui.TextDisabled("?");
-        else ImGuiHelpers.CompileSeStringWrapped($"<icon({(int)icon})>");
+        if (icon == BitmapFontIcon.None)
+        {
+            ImGui.TextDisabled("?");
+        }
+        else
+        {
+            ImGuiHelpers.CompileSeStringWrapped($"<icon({(int)icon})>");
 
-        if (ImGui.IsItemHovered()) ImGui.SetTooltip($"Auto-attack: {aspect}");
+            if (highlighted)
+            {
+                var min = ImGui.GetItemRectMin() - new Vector2(2f, 1f);
+                var max = ImGui.GetItemRectMax() + new Vector2(2f, 1f);
+                var colour = ImGui.GetColorU32(new Vector4(1.00f, 0.85f, 0.20f, 1.00f));
+                ImGui.GetWindowDrawList().AddRect(min, max, colour);
+            }
+        }
+
+        if (ImGui.IsItemHovered())
+        {
+            var suffix = highlighted ? $" — matches top enemy weakness ({aspect})" : string.Empty;
+            ImGui.SetTooltip($"Auto-attack: {aspect}{suffix}");
+        }
     }
 
     private static void DrawText(string text, bool bold)
