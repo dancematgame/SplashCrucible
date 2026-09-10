@@ -12,9 +12,9 @@ Splash Crucible is a personal-use Dalamud plugin for BST Crucible content. Its p
 - Refer to Beastmaster only as BST in project-facing text.
 - Do not mention the game title in project descriptions or documentation.
 - Do not guess XBM UI meanings when they can be established from diagnostics or current client structures.
-- **Hard interaction boundary:** Splash Crucible must not intentionally send data or actions to the game server.
-- Interactive features must remain restricted to reading or driving the local `XBMPetParty` Team Composition UI unless the user explicitly changes this rule.
-- Do not use packet/network helpers, combat actions, commands, server-bound agent actions, or unrelated state-changing APIs for Team Composition convenience features.
+- **Default interaction boundary:** Splash Crucible should not directly invoke packet/network helpers, combat-action APIs, commands, server-bound agent actions, or unrelated state-changing APIs.
+- Interactive Team Composition features remain restricted to reading or driving the local `XBMPetParty` UI unless the user explicitly requests another scoped interaction.
+- **Explicit scoped exception — Summon 1:** the user requested a button that synthesizes the existing local `Numpad 6` keybind when no active squad BST is detected. This keypress can naturally cause the client to perform the user's bound summon action and therefore may result in normal server-bound gameplay behavior. Splash itself must still not call packet/network, action, command, or agent APIs directly for this feature.
 - Before reproducing a native Team Composition interaction, first observe the exact native UI event/callback and verify that the implementation is limited to the local addon UI path.
 
 ## Current architecture
@@ -48,6 +48,7 @@ Current mode targets:
 - Party rows now use the same native list-click path: clicking an assigned BST in Party looks up its zero-based Squad row and dispatches that same local left-click, so it should remove/toggle the assignment exactly as clicking that BST in Squad does.
 - Board Layout enemy data uses a confirmed 40-AtkValue stride. First enemy name is `[57]`, first enemy weakness label is `[61]`, and first enemy weakness value is `[62]`. Second enemy equivalents were observed at `[97]`, `[101]`, and `[102]`.
 - For current gameplay, only the **top enemy** drives weakness highlighting. Multi-enemy stride information is retained for future extension.
+- Active-pet detection currently uses the local object table: Splash looks for a game object owned by the local player's Entity ID whose name matches one of the cached 12 Squad BST names. This is read-only detection and should be runtime-validated with and without a summoned BST.
 - See `XBM_UI_MAP.md` for the current full mapping table and confidence notes.
 
 ## BST metadata
@@ -66,21 +67,29 @@ Colour is rendered as a coloured circle; Borrow Type and Tempered Release Type a
 
 ## Current implementation state
 - The main Splash Crucible window is permanently visible.
-- The section formerly called **Current Party** is now **Party**. It displays the three assigned BSTs with colour, native auto-attack Aspect icon, Borrow Type, and Tempered Release Type, without Horn-number prefixes.
-- The section formerly called **Current Squad** is now **Squad** and lists all 12 BSTs in Team Composition row order.
+- **Party** displays the three assigned BSTs with colour, native auto-attack Aspect icon, Borrow Type, and Tempered Release Type, without Horn-number prefixes.
+- **Squad** lists all 12 BSTs in Team Composition row order.
 - Squad rows show BST name, coloured circle, native auto-attack Aspect icon, Borrow Type, and Tempered Release Type, with no redundant column-header row.
 - Squad row text is visually bold for faster scanning.
 - Horn names and squad names update live while Team Composition is open.
 - The most recently read Horn assignments and squad list are cached in plugin memory so they remain visible after the native Team Composition window closes.
 - Squad rows are clickable while Team Composition is open and reproduce the native left-click row activation path.
 - Assigned Party rows are also clickable while Team Composition is open and route through the matching Squad row, so they can remove/toggle that assignment through the same validated native UI path.
-- The temporary Team Composition mouse diagnostic has been removed after successful validation.
 - While `XBMStageDetailList` is visible, Splash reads the top enemy weakness from AtkValue `[62]`, extracts the known weakness name, and caches it for the current encounter.
 - Any Party or Squad BST whose auto-attack Aspect matches the cached top-enemy weakness gets a visible highlight around its Aspect icon.
+- A **Summon 1** button appears beneath Party. When no active squad BST is detected, the button is highlighted. Pressing it synthesizes a local `Numpad 6` key-down/key-up pair, matching the user's existing summon-Horn-1 keybind. When a squad BST is already active, the button is not highlighted and pressing it does nothing.
 - A temporary **Team Composition row diagnostic** is currently enabled for pet-HP discovery. While `XBMPetParty` is visible it prefers the Treant row if present (otherwise the first known Squad row), dumps that row's 77-AtkValue block, and shows absolute index, row-relative offset, type, and non-empty/non-zero value. This is read-only and intended to identify the current/max HP fields from the native Team Composition display.
 - The next mode-detection task is to distinguish playable Map from active Combat using reliable observed state rather than a guessed single-addon marker.
 
 ## Immediate diagnostic targets
+
+### Summon 1 / active pet
+Runtime-test with Team Composition cached first:
+1. With no BST summoned, verify `Summon 1` lights up.
+2. Press it and confirm the client's existing `Numpad 6` binding summons Horn 1.
+3. Once the BST exists in the object table, verify the button returns to its normal appearance and cannot trigger another summon.
+4. Despawn/remove the BST and verify the button lights again.
+If detection fails, add an observation-only object-table diagnostic rather than guessing a different ownership rule.
 
 ### Pet HP
 With Team Composition open and Treant visible, compare the temporary row diagnostic against Treant's known displayed HP (for example `374/850` in the observed screenshot). Identify the AtkValue offset(s) containing current and maximum HP. Once confirmed, remove the diagnostic and expose max/current HP directly in Party/Squad as desired.
