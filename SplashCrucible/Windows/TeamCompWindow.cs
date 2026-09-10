@@ -51,13 +51,13 @@ public sealed class TeamCompWindow : Window, IDisposable
         ImGui.TextUnformatted($"Mode: {modeText}");
 
         ImGui.Spacing();
-        ImGui.SeparatorText("Current Party");
+        DrawSectionHeader("Current Party");
         ImGui.TextUnformatted("Horn 1: (unresolved)");
         ImGui.TextUnformatted("Horn 2: (unresolved)");
         ImGui.TextUnformatted("Horn 3: (unresolved)");
 
         ImGui.Spacing();
-        ImGui.SeparatorText("XBMPetParty string values");
+        DrawSectionHeader("XBMPetParty string values");
 
         if (PetPartyStringValues.Length == 0)
         {
@@ -70,7 +70,7 @@ public sealed class TeamCompWindow : Window, IDisposable
         }
 
         ImGui.Spacing();
-        ImGui.SeparatorText("Active XBM addons");
+        DrawSectionHeader("Active XBM addons");
 
         if (ActiveXbmAddons.Length == 0)
         {
@@ -80,5 +80,11 @@ public sealed class TeamCompWindow : Window, IDisposable
 
         foreach (var addonName in ActiveXbmAddons)
             ImGui.BulletText(addonName);
+    }
+
+    private static void DrawSectionHeader(string text)
+    {
+        ImGui.Separator();
+        ImGui.TextUnformatted(text);
     }
 }
