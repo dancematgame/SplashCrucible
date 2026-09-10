@@ -22,6 +22,7 @@ public sealed class Plugin : IDalamudPlugin
 
     private const string TeamCompositionAddonName = "XBMPetParty";
     private const string BoardSelectionAddonName = "XBMStageMap";
+    private const string BoardLayoutAddonName = "XBMStageDetailList";
     private const string InInstanceHudAddonName = "XBMContentsMainHUD";
 
     private const int PartyRowCount = 12;
@@ -86,11 +87,6 @@ public sealed class Plugin : IDalamudPlugin
             return;
 
         var data = (AtkEventData*)receiveArgs.AtkEventData;
-
-        // Native diagnostics established that MouseButtonId 0 with no modifier is
-        // the normal left-click path. DispatchItemEvent does not carry explicit mouse
-        // context, so normalize only Splash's synchronous synthetic list clicks before
-        // XBMPetParty receives them.
         data->ListItemData.MouseButtonId = 0;
         data->ListItemData.MouseModifier = default;
     }
@@ -119,6 +115,35 @@ public sealed class Plugin : IDalamudPlugin
         mainWindow.SquadNames = cachedSquadNames.ToArray();
         mainWindow.TeamCompositionVisible = teamPartyVisible;
         mainWindow.ActiveXbmAddons = activeXbmAddons.OrderBy(x => x, StringComparer.Ordinal).ToArray();
+        mainWindow.BoardLayoutAtkValues = ReadBoardLayoutAtkValues();
+    }
+
+    private unsafe string[] ReadBoardLayoutAtkValues()
+    {
+        var addon = GameGui.GetAddonByName<AtkUnitBase>(BoardLayoutAddonName);
+        if (addon == null || addon->AtkValues == null)
+            return Array.Empty<string>();
+
+        var values = new List<string>();
+        for (var i = 0; i < addon->AtkValuesCount; i++)
+        {
+            var value = addon->AtkValues[i];
+            var type = value.Type & AtkValueType.TypeMask;
+            var text = type switch
+            {
+                AtkValueType.String or AtkValueType.String8 => value.GetValueAsString(),
+                AtkValueType.Int => value.Int.ToString(),
+                AtkValueType.UInt => value.UInt.ToString(),
+                AtkValueType.Bool => value.Byte != 0 ? "true" : "false",
+                AtkValueType.Float => value.Float.ToString("0.###"),
+                _ => string.Empty,
+            };
+
+            if (!string.IsNullOrWhiteSpace(text))
+                values.Add($"[{i}] {type}: {text}");
+        }
+
+        return values.ToArray();
     }
 
     private unsafe void SelectTeamCompositionRow(int row)
