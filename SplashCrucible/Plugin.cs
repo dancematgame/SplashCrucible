@@ -78,11 +78,15 @@ public sealed class Plugin : IDalamudPlugin
 
         uint atkEventParam = 0;
         uint nodeId = 0;
+        nint target = nint.Zero;
+        nint listener = nint.Zero;
 
         if (receiveArgs.AtkEvent != nint.Zero)
         {
             var atkEvent = (AtkEvent*)receiveArgs.AtkEvent;
             atkEventParam = atkEvent->Param;
+            target = (nint)atkEvent->Target;
+            listener = (nint)atkEvent->Listener;
 
             if (atkEvent->Node != null)
                 nodeId = atkEvent->Node->NodeId;
@@ -92,7 +96,10 @@ public sealed class Plugin : IDalamudPlugin
             receiveArgs.AtkEventType.ToString(),
             receiveArgs.EventParam,
             atkEventParam,
-            nodeId);
+            nodeId,
+            target,
+            listener,
+            receiveArgs.AtkEventData);
 
         mainWindow.AddPetPartyUiEvent(diagnostic);
 
@@ -103,11 +110,14 @@ public sealed class Plugin : IDalamudPlugin
         }
 
         Log.Information(
-            "XBMPetParty UI EVENT: Type={EventType}, EventParam={EventParam}, AtkEventParam={AtkEventParam}, NodeId={NodeId}",
+            "XBMPetParty UI EVENT: Type={EventType}, EventParam={EventParam}, AtkEventParam={AtkEventParam}, NodeId={NodeId}, Target=0x{Target:X}, Listener=0x{Listener:X}, EventData=0x{EventData:X}",
             diagnostic.EventType,
             diagnostic.EventParam,
             diagnostic.AtkEventParam,
-            diagnostic.NodeId);
+            diagnostic.NodeId,
+            diagnostic.Target,
+            diagnostic.Listener,
+            diagnostic.EventData);
     }
 
     private void OnFrameworkUpdate(IFramework framework)
