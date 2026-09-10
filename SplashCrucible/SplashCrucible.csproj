@@ -4,9 +4,9 @@
     <Version>0.0.1.0</Version>
     <Author>Splash</Author>
     <Name>Splash Crucible</Name>
-    <Punchline>Accessibility and information tools for the Beastmaster Crucible.</Punchline>
-    <Description>Provides additional UI and calculated information for FFXIV Beastmaster Crucible content.</Description>
+    <Punchline>Accessibility and information tools for the BST Crucible.</Punchline>
+    <Description>Provides additional UI and calculated information for BST Crucible content.</Description>
     <RepoUrl>https://github.com/dancematgame/SplashCrucible</RepoUrl>
-    <Tags>beastmaster;crucible;accessibility</Tags>
+    <Tags>bst;crucible;accessibility</Tags>
   </PropertyGroup>
 </Project>
