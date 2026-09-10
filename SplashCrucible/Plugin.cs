@@ -65,6 +65,7 @@ public sealed class Plugin : IDalamudPlugin
     private DateTime? arenaAutoSummonDeadline;
     private bool resultWasVisible;
     private bool resultSeenForCurrentArena;
+    private bool boardLayoutWasVisible;
 
     public Plugin()
     {
@@ -92,15 +93,6 @@ public sealed class Plugin : IDalamudPlugin
     {
         if (!args.AddonName.StartsWith("XBM", StringComparison.Ordinal))
             return;
-
-        if (args.AddonName == BoardLayoutAddonName)
-        {
-            arenaEnteredForCurrentBoard = false;
-            autoSummonCompletedForCurrentBoard = false;
-            pendingArenaAutoSummonAt = null;
-            arenaAutoSummonDeadline = null;
-            resultSeenForCurrentArena = false;
-        }
 
         activeXbmAddons.Add(args.AddonName);
         Log.Information("XBM OPEN: {AddonName}", args.AddonName);
@@ -131,14 +123,27 @@ public sealed class Plugin : IDalamudPlugin
         data->ListItemData.MouseModifier = default;
     }
 
-    private void OnFrameworkUpdate(IFramework framework)
+    private unsafe void OnFrameworkUpdate(IFramework framework)
     {
         mainWindow.IsOpen = true;
 
-        var teamPartyVisible = GameGui.GetAddonByName(TeamCompositionAddonName) != nint.Zero;
-        var boardLayoutVisible = GameGui.GetAddonByName(BoardLayoutAddonName) != nint.Zero;
+        // Several XBM addons persist after being hidden, so pointer existence alone is not a
+        // reliable "window is open" test. Use the native visibility state for actual UI windows.
+        var teamPartyVisible = IsAddonVisible(TeamCompositionAddonName);
+        var boardLayoutVisible = IsAddonVisible(BoardLayoutAddonName);
+        var resultVisible = IsAddonVisible(ResultAddonName);
+
+        // XBMContentsMainHUD has already proven reliable as the broad in-duty marker in testing.
         var inInstanceHudVisible = GameGui.GetAddonByName(InInstanceHudAddonName) != nint.Zero;
-        var resultVisible = GameGui.GetAddonByName(ResultAddonName) != nint.Zero;
+
+        // XBMStageDetailList can be reused rather than set up from scratch for every board.
+        // Reset encounter state on the visible edge, not merely Addon PostSetup.
+        if (boardLayoutVisible && !boardLayoutWasVisible)
+        {
+            ResetForNewBoardLayout();
+            Log.Information("Board Layout became visible; reset Arena and auto-summon state for the new board.");
+        }
+        boardLayoutWasVisible = boardLayoutVisible;
 
         if (teamPartyVisible)
             TryUpdateCurrentParty();
@@ -165,18 +170,17 @@ public sealed class Plugin : IDalamudPlugin
             if (arenaEnteredForCurrentBoard && resultVisible)
                 resultSeenForCurrentArena = true;
 
-            // XBMResult is the confirmed post-encounter Results panel. Its disappearance after
-            // being seen in an Arena is used as the earliest currently-known return-to-Map signal.
+            // Preferred Arena -> Map signal: the real Results window was visible and then closed.
             if (arenaEnteredForCurrentBoard && resultSeenForCurrentArena && resultWasVisible && !resultVisible)
             {
-                arenaEnteredForCurrentBoard = false;
-                pendingArenaAutoSummonAt = null;
-                arenaAutoSummonDeadline = null;
-                autoSummonCompletedForCurrentBoard = true;
-                resultSeenForCurrentArena = false;
-                cachedTopEnemyName = string.Empty;
-                cachedTopEnemyWeakness = string.Empty;
-                Log.Information("Results panel closed; returning state to Map.");
+                ReturnToMap("Results panel closed");
+            }
+            // Runtime-proven fallback: opening Team Composition on the duty map means we are no
+            // longer in the arena. This is later than Results, but prevents a permanently latched
+            // Arena state if a particular encounter does not expose the expected Results transition.
+            else if (arenaEnteredForCurrentBoard && teamPartyVisible)
+            {
+                ReturnToMap("Team Composition opened on duty map");
             }
         }
 
@@ -199,6 +203,34 @@ public sealed class Plugin : IDalamudPlugin
         mainWindow.HasActivePet = HasOwnedSquadPet();
         mainWindow.BoardLayoutVisible = boardLayoutVisible;
         mainWindow.ActiveXbmAddons = activeXbmAddons.OrderBy(x => x, StringComparer.Ordinal).ToArray();
+    }
+
+    private unsafe bool IsAddonVisible(string addonName)
+    {
+        var addon = GameGui.GetAddonByName<AtkUnitBase>(addonName);
+        return addon != null && addon->IsVisible;
+    }
+
+    private void ResetForNewBoardLayout()
+    {
+        arenaEnteredForCurrentBoard = false;
+        autoSummonCompletedForCurrentBoard = false;
+        pendingArenaAutoSummonAt = null;
+        arenaAutoSummonDeadline = null;
+        resultSeenForCurrentArena = false;
+        resultWasVisible = false;
+    }
+
+    private void ReturnToMap(string reason)
+    {
+        arenaEnteredForCurrentBoard = false;
+        pendingArenaAutoSummonAt = null;
+        arenaAutoSummonDeadline = null;
+        autoSummonCompletedForCurrentBoard = true;
+        resultSeenForCurrentArena = false;
+        cachedTopEnemyName = string.Empty;
+        cachedTopEnemyWeakness = string.Empty;
+        Log.Information("{Reason}; returning state to Map.", reason);
     }
 
     private void QueueArenaAutoSummon()
@@ -228,9 +260,6 @@ public sealed class Plugin : IDalamudPlugin
         {
             if (arenaAutoSummonDeadline is not null && DateTime.UtcNow < arenaAutoSummonDeadline.Value)
             {
-                // A stale owned-BST object can survive briefly across the arena transition.
-                // Keep checking locally for a short bounded window rather than permanently
-                // cancelling the summon on that first stale reading.
                 pendingArenaAutoSummonAt = DateTime.UtcNow + ArenaAutoSummonRetryDelay;
                 return;
             }
@@ -322,8 +351,6 @@ public sealed class Plugin : IDalamudPlugin
             return;
         }
 
-        // Important: unlike the crashing prototype, this reuses the actual AtkEvent object
-        // owned by the native button. No fabricated/null event context is passed to the addon.
         Log.Information("Dispatching native Commence Battle button event from XBMStageDetailList.");
         addon->ReceiveEvent(nativeEvent->State.EventType, (int)nativeEvent->Param, nativeEvent);
     }
