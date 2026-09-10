@@ -39,6 +39,8 @@ Current mode targets:
 - Row 0 Horn assignment state is at index `80`; subsequent assignment states are `80 + (row * 77)`.
 - Confirmed Horn assignment encoding: `0 = Horn 1`, `1 = Horn 2`, `2 = Horn 3`, `3 = unassigned`.
 - Example observed row assignment indices: first row `80`, second row `157`, third row `234`.
+- Native Team Composition `ListItemClick` diagnostics confirmed direct zero-based list mapping: Vulture/row 1 reports `SelectedIndex=0` and `RendererIndex=0`; Bat/row 2 reports `1`; Dullahan/row 3 reports `2`.
+- Current ClientStructs exposes `AtkComponentList.SelectItem(index, dispatchEvent)`. Current Squad uses this only on the local 12-row `XBMPetParty` list component, with the confirmed zero-based row index and `dispatchEvent=true`.
 - See `XBM_UI_MAP.md` for the current full mapping table and confidence notes.
 
 ## BST metadata
@@ -62,8 +64,8 @@ Current Squad resolves metadata by BST name. Colour is rendered as a coloured ci
 - Each Current Squad row shows: BST name, coloured circle, Borrow Type, and Tempered Release Type.
 - Horn names and squad names update live while Team Composition is open.
 - The most recently read Horn assignments and squad list are cached in plugin memory so they remain visible after the native Team Composition window closes.
-- A new **Team Composition click diagnostic** listens only to `XBMPetParty` `PreReceiveEvent` events and displays the native event type, event parameter, `AtkEvent.Param`, and `AtkEvent.Node->NodeId` where available.
-- The click diagnostic is observation-only. It does not call `FireCallback`, synthesize UI events, or perform any server-facing action.
+- Current Squad rows are clickable while Team Composition is open. A click finds the native 12-row `AtkComponentList` inside `XBMPetParty` and calls its local `SelectItem(row, true)` UI path.
+- The temporary row-click diagnostic UI has been removed now that row mapping is confirmed.
 
 ## Immediate diagnostic targets
 
@@ -83,18 +85,8 @@ Verify that:
 4. Current Squad shows all 12 BST names in the same order as Team Composition.
 5. Each known BST resolves its CSV-derived colour, Borrow Type, and Tempered Release Type correctly.
 6. Closing Team Composition leaves the last known Horn assignments and Current Squad visible in Splash Crucible.
-
-### Current Squad row-selection mapping
-Goal: clicking a row in Splash Crucible should eventually select the corresponding BST in the native Team Composition window, but only by reproducing the local Team Composition UI interaction.
-
-Current diagnostic procedure:
-1. Open Team Composition.
-2. In Splash Crucible, press **Clear Events** under **Team Composition click diagnostic**.
-3. Manually click exactly one BST row in the native Team Composition window.
-4. Record or screenshot the events shown in Splash Crucible.
-5. Repeat after clearing with at least two other rows, ideally rows 1, 2, and 3.
-6. Compare `EventType`, `EventParam`, `AtkEvent.Param`, and `NodeId` to determine which field identifies the selected row.
-7. Do not make Current Squad rows active until the native row-selection mapping is confirmed.
+7. With Team Composition open, clicking Current Squad rows 1, 2, and 3 reproduces the corresponding native Team Composition selections/assignments.
+8. With Team Composition closed, Current Squad clicks do nothing and do not invoke any other game interaction path.
 
 ## Local workflow
 Repository: `https://github.com/dancematgame/SplashCrucible`
