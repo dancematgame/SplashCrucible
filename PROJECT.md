@@ -44,7 +44,8 @@ Current mode targets:
 - Native mouse diagnostics confirmed `MouseButtonId=0` with no modifier for left-click and `MouseButtonId=1` with no modifier for right-click.
 - `SelectItem(row, true)` changed native list selection but did not visibly activate the BST row.
 - A bare `DispatchItemEvent(row, AtkEventType.ListItemClick)` could be misinterpreted as a right-click because it did not reliably carry mouse-button context.
-- Current Squad activation now dispatches the local native list event while synchronously normalizing only Splash-generated events to the confirmed left-click context (`MouseButtonId=0`, no modifier). This has been runtime-validated to reproduce the intended native left-click behavior.
+- Squad activation now dispatches the local native list event while synchronously normalizing only Splash-generated events to the confirmed left-click context (`MouseButtonId=0`, no modifier). This has been runtime-validated to reproduce the intended native left-click behavior.
+- Party rows now use the same native list-click path: clicking an assigned BST in Party looks up its zero-based Squad row and dispatches that same local left-click, so it should remove/toggle the assignment exactly as clicking that BST in Squad does.
 - Board Layout enemy data uses a confirmed 40-AtkValue stride. First enemy name is `[57]`, first enemy weakness label is `[61]`, and first enemy weakness value is `[62]`. Second enemy equivalents were observed at `[97]`, `[101]`, and `[102]`.
 - For current gameplay, only the **top enemy** drives weakness highlighting. Multi-enemy stride information is retained for future extension.
 - See `XBM_UI_MAP.md` for the current full mapping table and confidence notes.
@@ -59,26 +60,30 @@ The current visual metadata uses:
 - `Borrow Type`
 - `Tempered Release Type`
 
-Auto-attack Aspect is stored for all 50 BSTs using the observed attack-type values: elemental aspects plus Slashing, Piercing, Blunt, and Unaspected. The UI now uses the game's own bitmap-font symbols rather than approximate Unicode glyphs: `ElementFire`, `ElementIce`, `ElementWind`, `ElementEarth`, `ElementLightning`, `ElementWater`, `RedStar` for Unaspected, and the native Blunt/Piercing/Slashing damage symbols. Hovering the icon shows the full auto-attack type. `Magic Barrier` is normalized to `Barrier` in code-side metadata.
+Auto-attack Aspect is stored for all 50 BSTs using the observed attack-type values: elemental aspects plus Slashing, Piercing, Blunt, and Unaspected. The UI uses the game's own bitmap-font symbols: `ElementFire`, `ElementIce`, `ElementWind`, `ElementEarth`, `ElementLightning`, `ElementWater`, `RedStar` for Unaspected, and the native Blunt/Piercing/Slashing damage symbols. Hovering the icon shows the full auto-attack type. `Magic Barrier` is normalized to `Barrier` in code-side metadata.
 
 Colour is rendered as a coloured circle; Borrow Type and Tempered Release Type are rendered as text. Blank metadata values display as an em dash.
 
 ## Current implementation state
 - The main Splash Crucible window is permanently visible.
-- **Current Party** reads the 12 `XBMPetParty` rows and displays the three assigned BSTs with colour, native auto-attack Aspect icon, Borrow Type, and Tempered Release Type. The redundant `Horn 1`, `Horn 2`, and `Horn 3` prefixes are no longer shown.
-- **Current Squad** is displayed directly below Current Party and lists all 12 BSTs in Team Composition row order.
-- Current Squad rows show BST name, coloured circle, native auto-attack Aspect icon, Borrow Type, and Tempered Release Type, with no redundant column-header row.
-- Current Squad row text is visually bold for faster scanning.
+- The section formerly called **Current Party** is now **Party**. It displays the three assigned BSTs with colour, native auto-attack Aspect icon, Borrow Type, and Tempered Release Type, without Horn-number prefixes.
+- The section formerly called **Current Squad** is now **Squad** and lists all 12 BSTs in Team Composition row order.
+- Squad rows show BST name, coloured circle, native auto-attack Aspect icon, Borrow Type, and Tempered Release Type, with no redundant column-header row.
+- Squad row text is visually bold for faster scanning.
 - Horn names and squad names update live while Team Composition is open.
 - The most recently read Horn assignments and squad list are cached in plugin memory so they remain visible after the native Team Composition window closes.
-- Current Squad rows are clickable while Team Composition is open and reproduce the native left-click row activation path.
+- Squad rows are clickable while Team Composition is open and reproduce the native left-click row activation path.
+- Assigned Party rows are also clickable while Team Composition is open and route through the matching Squad row, so they can remove/toggle that assignment through the same validated native UI path.
 - The temporary Team Composition mouse diagnostic has been removed after successful validation.
-- The temporary Board Layout AtkValue diagnostic has been removed after establishing the enemy weakness mapping.
 - While `XBMStageDetailList` is visible, Splash reads the top enemy weakness from AtkValue `[62]`, extracts the known weakness name, and caches it for the current encounter.
-- Any Current Party or Current Squad BST whose auto-attack Aspect matches the cached top-enemy weakness gets a visible highlight around its Aspect icon.
+- Any Party or Squad BST whose auto-attack Aspect matches the cached top-enemy weakness gets a visible highlight around its Aspect icon.
+- A temporary **Team Composition row diagnostic** is currently enabled for pet-HP discovery. While `XBMPetParty` is visible it prefers the Treant row if present (otherwise the first known Squad row), dumps that row's 77-AtkValue block, and shows absolute index, row-relative offset, type, and non-empty/non-zero value. This is read-only and intended to identify the current/max HP fields from the native Team Composition display.
 - The next mode-detection task is to distinguish playable Map from active Combat using reliable observed state rather than a guessed single-addon marker.
 
 ## Immediate diagnostic targets
+
+### Pet HP
+With Team Composition open and Treant visible, compare the temporary row diagnostic against Treant's known displayed HP (for example `374/850` in the observed screenshot). Identify the AtkValue offset(s) containing current and maximum HP. Once confirmed, remove the diagnostic and expose max/current HP directly in Party/Squad as desired.
 
 ### Mode detection
 Capture/compare the active XBM addon set in:
@@ -88,16 +93,17 @@ Capture/compare the active XBM addon set in:
 
 If Combat does not expose a unique XBM addon, detect it via another reliable game-state signal.
 
-### Current Party / Current Squad validation
+### Party / Squad validation
 Verify that:
-1. Assigning or replacing BSTs in Horn 1 / Horn 2 / Horn 3 updates the corresponding Current Party row and metadata.
-2. Current Squad shows all 12 BSTs in native Team Composition order with correct metadata.
+1. Assigning or replacing BSTs updates Party and metadata.
+2. Squad shows all 12 BSTs in native Team Composition order with correct metadata.
 3. Native auto-attack Aspect symbols line up beside the affinity colour dots and show the expected tooltip.
-4. Opening a Board Layout with a known top-enemy weakness highlights every matching Aspect icon in Current Party and Current Squad.
+4. Opening a Board Layout with a known top-enemy weakness highlights every matching Aspect icon in Party and Squad.
 5. On a multi-enemy Board Layout, only the first/top enemy weakness affects highlighting for now.
-6. Closing Team Composition leaves the last known Horn assignments and Current Squad visible.
-7. With Team Composition open, clicking different Current Squad rows continues to reproduce only the normal native left-click behavior.
-8. With Team Composition closed, Current Squad clicks do nothing.
+6. Closing Team Composition leaves the last known Party assignments and Squad visible.
+7. With Team Composition open, clicking different Squad rows continues to reproduce only the normal native left-click behavior.
+8. With Team Composition open, clicking an assigned BST in Party removes/toggles that assignment exactly as clicking the same BST in Squad.
+9. With Team Composition closed, Party/Squad clicks do nothing.
 
 ## Local workflow
 Repository: `https://github.com/dancematgame/SplashCrucible`
