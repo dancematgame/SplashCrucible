@@ -56,6 +56,7 @@ public sealed class Plugin : IDalamudPlugin
     private string cachedTopEnemyWeakness = string.Empty;
     private bool syntheticTeamCompositionClick;
     private bool autoSummonAttemptedForCurrentBoard;
+    private bool arenaEnteredForCurrentBoard;
 
     public Plugin()
     {
@@ -85,7 +86,10 @@ public sealed class Plugin : IDalamudPlugin
             return;
 
         if (args.AddonName == BoardLayoutAddonName)
+        {
             autoSummonAttemptedForCurrentBoard = false;
+            arenaEnteredForCurrentBoard = false;
+        }
 
         activeXbmAddons.Add(args.AddonName);
         Log.Information("XBM OPEN: {AddonName}", args.AddonName);
@@ -125,22 +129,31 @@ public sealed class Plugin : IDalamudPlugin
         var boardLayoutVisible = GameGui.GetAddonByName(BoardLayoutAddonName) != nint.Zero;
         var inInstanceHudVisible = GameGui.GetAddonByName(InInstanceHudAddonName) != nint.Zero;
 
-        if (teamPartyVisible && !inInstanceHudVisible)
-            mainWindow.CurrentMode = CrucibleMode.TeamSelection;
-        else if (inInstanceHudVisible)
-            mainWindow.CurrentMode = CrucibleMode.InInstanceUnresolved;
-        else if (boardSelectionVisible)
-            mainWindow.CurrentMode = CrucibleMode.BoardSelection;
-        else
-            mainWindow.CurrentMode = CrucibleMode.Unknown;
-
         if (teamPartyVisible)
             TryUpdateCurrentParty();
 
         if (boardLayoutVisible)
             TryUpdateTopEnemyData();
 
+        if (!inInstanceHudVisible)
+        {
+            arenaEnteredForCurrentBoard = false;
+        }
+        else if (!boardLayoutVisible && IsCachedTopEnemyPresent())
+        {
+            arenaEnteredForCurrentBoard = true;
+        }
+
         TryAutoSummonHorn1(inInstanceHudVisible, boardLayoutVisible);
+
+        if (teamPartyVisible && !inInstanceHudVisible)
+            mainWindow.CurrentMode = CrucibleMode.TeamSelection;
+        else if (inInstanceHudVisible)
+            mainWindow.CurrentMode = arenaEnteredForCurrentBoard ? CrucibleMode.Arena : CrucibleMode.Map;
+        else if (boardSelectionVisible)
+            mainWindow.CurrentMode = CrucibleMode.BoardSelection;
+        else
+            mainWindow.CurrentMode = CrucibleMode.Unknown;
 
         mainWindow.HornNames = cachedHornNames.ToArray();
         mainWindow.SquadNames = cachedSquadNames.ToArray();
@@ -207,10 +220,6 @@ public sealed class Plugin : IDalamudPlugin
         if (!IsCachedTopEnemyPresent())
             return;
 
-        // The cached top enemy came from the Board Layout for this board and is now a
-        // targetable object in the local object table. Treat that as the arena-arrival signal.
-        // Only attempt the summon once for this Board Layout so a dead/despawned BST does not
-        // cause repeated Numpad 6 presses during the same encounter.
         autoSummonAttemptedForCurrentBoard = true;
 
         if (HasOwnedSquadPet())
@@ -240,8 +249,6 @@ public sealed class Plugin : IDalamudPlugin
         if (addon == null)
             return;
 
-        // Native observation: Commence Battle arrives at XBMStageDetailList as
-        // ButtonClick with EventParam=9. Reproduce that exact addon ReceiveEvent path.
         addon->AtkEventListener.ReceiveEvent(AtkEventType.ButtonClick, 9, null, null);
     }
 
