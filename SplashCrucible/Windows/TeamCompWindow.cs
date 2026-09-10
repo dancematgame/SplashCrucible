@@ -18,6 +18,7 @@ public sealed class TeamCompWindow : Window, IDisposable
     public CrucibleMode CurrentMode { get; set; } = CrucibleMode.Unknown;
     public string[] ActiveXbmAddons { get; set; } = Array.Empty<string>();
     public string[] HornNames { get; set; } = { "(unassigned)", "(unassigned)", "(unassigned)" };
+    public string[] SquadNames { get; set; } = Array.Empty<string>();
 
     public TeamCompWindow()
         : base("Splash Crucible##Main")
@@ -57,6 +58,11 @@ public sealed class TeamCompWindow : Window, IDisposable
         ImGui.TextUnformatted($"Horn 3: {GetHornName(2)}");
 
         ImGui.Spacing();
+        DrawSectionHeader("Current Squad");
+        for (var i = 0; i < 12; i++)
+            ImGui.TextUnformatted($"{i + 1}. {GetSquadName(i)}");
+
+        ImGui.Spacing();
         DrawSectionHeader("Active XBM addons");
 
         if (ActiveXbmAddons.Length == 0)
@@ -73,6 +79,11 @@ public sealed class TeamCompWindow : Window, IDisposable
         => HornNames.Length > index && !string.IsNullOrWhiteSpace(HornNames[index])
             ? HornNames[index]
             : "(unassigned)";
+
+    private string GetSquadName(int index)
+        => SquadNames.Length > index && !string.IsNullOrWhiteSpace(SquadNames[index])
+            ? SquadNames[index]
+            : "(unknown)";
 
     private static void DrawSectionHeader(string text)
     {
