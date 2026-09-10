@@ -52,16 +52,19 @@ A user-maintained 50-BST property table is incorporated into the UI through `Spl
 The current visual metadata uses:
 - `Pet`
 - `Colour`
+- auto-attack `Aspect`
 - `Borrow Type`
 - `Tempered Release Type`
+
+Auto-attack Aspect is stored for all 50 BSTs using the observed attack-type values: elemental aspects plus Slashing, Piercing, Blunt, and Unaspected. In the UI it is rendered as a compact icon immediately beside the BST's colour dot; hovering the icon shows the full auto-attack type. `Magic Barrier` is normalized to `Barrier` in code-side metadata.
 
 Colour is rendered as a coloured circle; Borrow Type and Tempered Release Type are rendered as text. Blank metadata values display as an em dash.
 
 ## Current implementation state
 - The main Splash Crucible window is permanently visible.
-- **Current Party** reads the 12 `XBMPetParty` rows and displays Horn 1 / Horn 2 / Horn 3 together with the assigned BST's colour, Borrow Type, and Tempered Release Type.
+- **Current Party** reads the 12 `XBMPetParty` rows and displays Horn 1 / Horn 2 / Horn 3 together with the assigned BST's colour, auto-attack Aspect icon, Borrow Type, and Tempered Release Type.
 - **Current Squad** is displayed directly below Current Party and lists all 12 BSTs in Team Composition row order.
-- Current Squad rows show BST name, coloured circle, Borrow Type, and Tempered Release Type, with no redundant column-header row.
+- Current Squad rows show BST name, coloured circle, auto-attack Aspect icon, Borrow Type, and Tempered Release Type, with no redundant column-header row.
 - Current Squad row text is visually bold for faster scanning.
 - Horn names and squad names update live while Team Composition is open.
 - The most recently read Horn assignments and squad list are cached in plugin memory so they remain visible after the native Team Composition window closes.
@@ -83,9 +86,10 @@ If Combat does not expose a unique XBM addon, detect it via another reliable gam
 Verify that:
 1. Assigning or replacing BSTs in Horn 1 / Horn 2 / Horn 3 updates the corresponding Current Party row and metadata.
 2. Current Squad shows all 12 BSTs in native Team Composition order with correct metadata.
-3. Closing Team Composition leaves the last known Horn assignments and Current Squad visible.
-4. With Team Composition open, clicking different Current Squad rows continues to reproduce only the normal native left-click behavior.
-5. With Team Composition closed, Current Squad clicks do nothing.
+3. Auto-attack Aspect icons line up beside the affinity colour dots and show the expected tooltip.
+4. Closing Team Composition leaves the last known Horn assignments and Current Squad visible.
+5. With Team Composition open, clicking different Current Squad rows continues to reproduce only the normal native left-click behavior.
+6. With Team Composition closed, Current Squad clicks do nothing.
 
 ## Local workflow
 Repository: `https://github.com/dancematgame/SplashCrucible`
