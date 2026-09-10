@@ -33,6 +33,7 @@ Current mode targets:
 - `XBMStageMap` is the Board Selection graphic, not the playable map.
 - `XBMStageList` is the Board Selection list.
 - `XBMContentsMainHUD` is present on the playable map and therefore must not be treated as a Combat-only marker.
+- `XBMStageDetailList` is the Board Layout window.
 - `XBMPetParty` exposes the displayed 12-BST list through repeated `AtkValue` row blocks.
 - Each displayed BST row uses a stride of 77 `AtkValue` entries.
 - Row 0 name is at index `9`; subsequent names are `9 + (row * 77)`.
@@ -44,6 +45,8 @@ Current mode targets:
 - `SelectItem(row, true)` changed native list selection but did not visibly activate the BST row.
 - A bare `DispatchItemEvent(row, AtkEventType.ListItemClick)` could be misinterpreted as a right-click because it did not reliably carry mouse-button context.
 - Current Squad activation now dispatches the local native list event while synchronously normalizing only Splash-generated events to the confirmed left-click context (`MouseButtonId=0`, no modifier). This has been runtime-validated to reproduce the intended native left-click behavior.
+- Board Layout enemy data uses a confirmed 40-AtkValue stride. First enemy name is `[57]`, first enemy weakness label is `[61]`, and first enemy weakness value is `[62]`. Second enemy equivalents were observed at `[97]`, `[101]`, and `[102]`.
+- For current gameplay, only the **top enemy** drives weakness highlighting. Multi-enemy stride information is retained for future extension.
 - See `XBM_UI_MAP.md` for the current full mapping table and confidence notes.
 
 ## BST metadata
@@ -70,6 +73,9 @@ Colour is rendered as a coloured circle; Borrow Type and Tempered Release Type a
 - The most recently read Horn assignments and squad list are cached in plugin memory so they remain visible after the native Team Composition window closes.
 - Current Squad rows are clickable while Team Composition is open and reproduce the native left-click row activation path.
 - The temporary Team Composition mouse diagnostic has been removed after successful validation.
+- The temporary Board Layout AtkValue diagnostic has been removed after establishing the enemy weakness mapping.
+- While `XBMStageDetailList` is visible, Splash reads the top enemy weakness from AtkValue `[62]`, extracts the known weakness name, and caches it for the current encounter.
+- Any Current Party or Current Squad BST whose auto-attack Aspect matches the cached top-enemy weakness gets a visible highlight around its Aspect icon.
 - The next mode-detection task is to distinguish playable Map from active Combat using reliable observed state rather than a guessed single-addon marker.
 
 ## Immediate diagnostic targets
@@ -87,9 +93,11 @@ Verify that:
 1. Assigning or replacing BSTs in Horn 1 / Horn 2 / Horn 3 updates the corresponding Current Party row and metadata.
 2. Current Squad shows all 12 BSTs in native Team Composition order with correct metadata.
 3. Native auto-attack Aspect symbols line up beside the affinity colour dots and show the expected tooltip.
-4. Closing Team Composition leaves the last known Horn assignments and Current Squad visible.
-5. With Team Composition open, clicking different Current Squad rows continues to reproduce only the normal native left-click behavior.
-6. With Team Composition closed, Current Squad clicks do nothing.
+4. Opening a Board Layout with a known top-enemy weakness highlights every matching Aspect icon in Current Party and Current Squad.
+5. On a multi-enemy Board Layout, only the first/top enemy weakness affects highlighting for now.
+6. Closing Team Composition leaves the last known Horn assignments and Current Squad visible.
+7. With Team Composition open, clicking different Current Squad rows continues to reproduce only the normal native left-click behavior.
+8. With Team Composition closed, Current Squad clicks do nothing.
 
 ## Local workflow
 Repository: `https://github.com/dancematgame/SplashCrucible`
