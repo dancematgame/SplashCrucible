@@ -40,34 +40,34 @@ Current mode targets:
 - Confirmed Horn assignment encoding: `0 = Horn 1`, `1 = Horn 2`, `2 = Horn 3`, `3 = unassigned`.
 - Example observed row assignment indices: first row `80`, second row `157`, third row `234`.
 - Native Team Composition `ListItemClick` diagnostics confirmed direct zero-based list mapping: Vulture/row 1 reports `SelectedIndex=0` and `RendererIndex=0`; Bat/row 2 reports `1`; Dullahan/row 3 reports `2`.
-- `AtkEventData.AtkListItemData` also exposes `MouseButtonId` and `MouseModifier`, which are now the next diagnostic target.
+- Native mouse diagnostics confirmed `MouseButtonId=0` with no modifier for left-click and `MouseButtonId=1` with no modifier for right-click.
 - `SelectItem(row, true)` changed native list selection but did not visibly activate the BST row.
-- `DispatchItemEvent(row, AtkEventType.ListItemClick)` partially activated rows, but testing showed that a Splash left-click could intermittently produce the native right-click/context-menu behavior. Therefore that synthetic path is not considered correct and is currently disabled.
+- A bare `DispatchItemEvent(row, AtkEventType.ListItemClick)` could be misinterpreted as a right-click because it did not reliably carry mouse-button context.
+- Current Squad activation now dispatches the local native list event while synchronously normalizing only Splash-generated events to the confirmed left-click context (`MouseButtonId=0`, no modifier). This has been runtime-validated to reproduce the intended native left-click behavior.
 - See `XBM_UI_MAP.md` for the current full mapping table and confidence notes.
 
 ## BST metadata
-A user-maintained 50-BST property table is being incorporated into the UI. The current code-side lookup is `SplashCrucible/Data/PetMetadata.cs` and is derived from the supplied `Pet Properties.csv`.
+A user-maintained 50-BST property table is incorporated into the UI through `SplashCrucible/Data/PetMetadata.cs`, derived from the supplied `Pet Properties.csv`.
 
-The first visual metadata pass uses these CSV fields:
+The current visual metadata uses:
 - `Pet`
 - `Colour`
 - `Borrow Type`
 - `Tempered Release Type`
 
-Current Squad resolves metadata by BST name. Colour is rendered as a coloured circle; Borrow Type and Tempered Release Type are rendered as text. Blank metadata values display as an em dash.
+Colour is rendered as a coloured circle; Borrow Type and Tempered Release Type are rendered as text. Blank metadata values display as an em dash.
 
 ## Current implementation state
 - The main Splash Crucible window is permanently visible.
-- The current build includes diagnostic support for observing active XBM addons.
-- Earlier semantic mode guesses were intentionally rolled back where evidence showed they were incorrect.
-- The next mode-detection task is to derive reliable context rules from actual observed UI/game state rather than single-addon guesses.
-- **Current Party** reads the 12 `XBMPetParty` rows and displays the BST assigned to Horn 1 / Horn 2 / Horn 3.
+- **Current Party** reads the 12 `XBMPetParty` rows and displays Horn 1 / Horn 2 / Horn 3 together with the assigned BST's colour, Borrow Type, and Tempered Release Type.
 - **Current Squad** is displayed directly below Current Party and lists all 12 BSTs in Team Composition row order.
-- Each Current Squad row shows: BST name, coloured circle, Borrow Type, and Tempered Release Type.
+- Current Squad rows show BST name, coloured circle, Borrow Type, and Tempered Release Type, with no redundant column-header row.
+- Current Squad row text is visually bold for faster scanning.
 - Horn names and squad names update live while Team Composition is open.
 - The most recently read Horn assignments and squad list are cached in plugin memory so they remain visible after the native Team Composition window closes.
-- Current Squad synthetic row activation is temporarily disabled while the native left-click versus right-click mouse-button data is measured.
-- The current **Team Composition mouse diagnostic** is observation-only and records native `ListItemClick` `SelectedIndex`, `RendererIndex`, `MouseButtonId`, and `MouseModifier`.
+- Current Squad rows are clickable while Team Composition is open and reproduce the native left-click row activation path.
+- The temporary Team Composition mouse diagnostic has been removed after successful validation.
+- The next mode-detection task is to distinguish playable Map from active Combat using reliable observed state rather than a guessed single-addon marker.
 
 ## Immediate diagnostic targets
 
@@ -81,24 +81,11 @@ If Combat does not expose a unique XBM addon, detect it via another reliable gam
 
 ### Current Party / Current Squad validation
 Verify that:
-1. Assigning a BST to Horn 1 immediately updates Current Party Horn 1.
-2. Assigning BSTs to Horn 2 and Horn 3 updates the corresponding entries.
-3. Replacing or clearing an assignment updates the correct Horn.
-4. Current Squad shows all 12 BST names in the same order as Team Composition.
-5. Each known BST resolves its CSV-derived colour, Borrow Type, and Tempered Release Type correctly.
-6. Closing Team Composition leaves the last known Horn assignments and Current Squad visible in Splash Crucible.
-
-### Native left/right click diagnostic
-Goal: determine the exact native mouse-button context required for safe local row activation.
-
-Procedure:
-1. Open Team Composition.
-2. Press **Clear Clicks** in Splash Crucible.
-3. Manually left-click one BST row in native Team Composition and record `SelectedIndex`, `RendererIndex`, `MouseButtonId`, and `MouseModifier`.
-4. Clear again.
-5. Manually right-click the same BST row and record the same fields.
-6. Optionally repeat on a second row to verify mouse-button values are row-independent.
-7. Do not re-enable synthetic Current Squad activation until left-click behavior can be reproduced without ambiguity.
+1. Assigning or replacing BSTs in Horn 1 / Horn 2 / Horn 3 updates the corresponding Current Party row and metadata.
+2. Current Squad shows all 12 BSTs in native Team Composition order with correct metadata.
+3. Closing Team Composition leaves the last known Horn assignments and Current Squad visible.
+4. With Team Composition open, clicking different Current Squad rows continues to reproduce only the normal native left-click behavior.
+5. With Team Composition closed, Current Squad clicks do nothing.
 
 ## Local workflow
 Repository: `https://github.com/dancematgame/SplashCrucible`
