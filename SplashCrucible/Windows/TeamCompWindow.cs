@@ -2,6 +2,7 @@ using System;
 using System.Numerics;
 using Dalamud.Bindings.ImGui;
 using Dalamud.Interface.Windowing;
+using SplashCrucible.Data;
 
 namespace SplashCrucible.Windows;
 
@@ -25,7 +26,7 @@ public sealed class TeamCompWindow : Window, IDisposable
     {
         SizeConstraints = new WindowSizeConstraints
         {
-            MinimumSize = new Vector2(360, 180),
+            MinimumSize = new Vector2(560, 280),
             MaximumSize = new Vector2(float.MaxValue, float.MaxValue),
         };
 
@@ -59,8 +60,10 @@ public sealed class TeamCompWindow : Window, IDisposable
 
         ImGui.Spacing();
         DrawSectionHeader("Current Squad");
+        DrawSquadHeader();
+
         for (var i = 0; i < 12; i++)
-            ImGui.TextUnformatted($"{i + 1}. {GetSquadName(i)}");
+            DrawSquadRow(GetSquadName(i));
 
         ImGui.Spacing();
         DrawSectionHeader("Active XBM addons");
@@ -74,6 +77,66 @@ public sealed class TeamCompWindow : Window, IDisposable
         foreach (var addonName in ActiveXbmAddons)
             ImGui.BulletText(addonName);
     }
+
+    private static void DrawSquadHeader()
+    {
+        var startX = ImGui.GetCursorPosX();
+        ImGui.TextDisabled("Name");
+        ImGui.SameLine();
+        ImGui.SetCursorPosX(startX + 170f);
+        ImGui.TextDisabled("Colour");
+        ImGui.SameLine();
+        ImGui.SetCursorPosX(startX + 235f);
+        ImGui.TextDisabled("Borrow Type");
+        ImGui.SameLine();
+        ImGui.SetCursorPosX(startX + 365f);
+        ImGui.TextDisabled("Tempered Release Type");
+    }
+
+    private static void DrawSquadRow(string name)
+    {
+        var startX = ImGui.GetCursorPosX();
+        ImGui.TextUnformatted(name);
+
+        if (!PetMetadata.TryGet(name, out var metadata))
+        {
+            ImGui.SameLine();
+            ImGui.SetCursorPosX(startX + 170f);
+            ImGui.TextDisabled("●");
+            ImGui.SameLine();
+            ImGui.SetCursorPosX(startX + 235f);
+            ImGui.TextDisabled("—");
+            ImGui.SameLine();
+            ImGui.SetCursorPosX(startX + 365f);
+            ImGui.TextDisabled("—");
+            return;
+        }
+
+        ImGui.SameLine();
+        ImGui.SetCursorPosX(startX + 170f);
+        ImGui.TextColored(GetColour(metadata.Colour), "●");
+
+        ImGui.SameLine();
+        ImGui.SetCursorPosX(startX + 235f);
+        ImGui.TextUnformatted(DisplayOrDash(metadata.BorrowType));
+
+        ImGui.SameLine();
+        ImGui.SetCursorPosX(startX + 365f);
+        ImGui.TextUnformatted(DisplayOrDash(metadata.TemperedReleaseType));
+    }
+
+    private static Vector4 GetColour(string colour)
+        => colour switch
+        {
+            "Red" => new Vector4(1.00f, 0.25f, 0.25f, 1.00f),
+            "Blue" => new Vector4(0.30f, 0.55f, 1.00f, 1.00f),
+            "Yellow" => new Vector4(1.00f, 0.85f, 0.20f, 1.00f),
+            "Green" => new Vector4(0.30f, 0.85f, 0.35f, 1.00f),
+            _ => new Vector4(0.65f, 0.65f, 0.65f, 1.00f),
+        };
+
+    private static string DisplayOrDash(string value)
+        => string.IsNullOrWhiteSpace(value) ? "—" : value;
 
     private string GetHornName(int index)
         => HornNames.Length > index && !string.IsNullOrWhiteSpace(HornNames[index])
