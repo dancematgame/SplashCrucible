@@ -59,6 +59,7 @@ public sealed class TeamCompWindow : Window, IDisposable
     public bool HasActivePet { get; set; }
     public bool BoardLayoutVisible { get; set; }
     public Action<int>? SquadRowClicked { get; set; }
+    public Action<int>? SummonHornRequested { get; set; }
     public Action? SummonHorn1Requested { get; set; }
     public Action? CommenceBattleRequested { get; set; }
 
@@ -122,8 +123,11 @@ public sealed class TeamCompWindow : Window, IDisposable
             DrawCenteredButton("Commence Battle", () => CommenceBattleRequested?.Invoke());
         }
 
-        ImGui.Spacing();
-        DrawSummonButton();
+        if (CurrentMode != CrucibleMode.Arena)
+        {
+            ImGui.Spacing();
+            DrawSummonButton();
+        }
 
         ImGui.Spacing();
         DrawDebugProbe();
@@ -170,49 +174,83 @@ public sealed class TeamCompWindow : Window, IDisposable
         var currentHp = arenaLastKnownCurrentHp[hornIndex];
         var maxHp = arenaLastKnownMaxHp[hornIndex];
         var percent = maxHp == 0 ? 0f : Math.Clamp((float)currentHp / maxHp, 0f, 1f);
+        var percentText = maxHp == 0 ? "HP unknown" : $"{Math.Clamp((int)Math.Round(percent * 100f), 0, 100)}%";
+        var active = FindOwnedHornCharacter(name) is not null;
+
         var availableWidth = ImGui.GetContentRegionAvail().X;
         const float portraitSize = 82f;
         const float gap = 12f;
         var detailsWidth = Math.Max(180f, availableWidth - portraitSize - gap);
+        var panelStart = ImGui.GetCursorScreenPos();
 
         ImGui.BeginGroup();
         ImGui.TextUnformatted($"Horn {hornIndex + 1} — {name}");
 
         var portraitPos = ImGui.GetCursorScreenPos();
-        ImGui.InvisibleButton($"##HornPortrait{hornIndex}", new Vector2(portraitSize, portraitSize));
         var portraitMax = portraitPos + new Vector2(portraitSize, portraitSize);
         var drawList = ImGui.GetWindowDrawList();
         drawList.AddRectFilled(portraitPos, portraitMax, ImGui.GetColorU32(ImGuiCol.FrameBg), 4f);
-        drawList.AddRect(portraitPos, portraitMax, ImGui.GetColorU32(ImGuiCol.Border), 4f);
 
-        var imageLabel = "Beast image";
+        if (active)
+            drawList.AddRectFilled(portraitPos, portraitMax, ImGui.GetColorU32(new Vector4(0.20f, 0.85f, 0.30f, 0.30f)), 4f);
+
+        drawList.AddRect(
+            portraitPos,
+            portraitMax,
+            active ? ImGui.GetColorU32(new Vector4(0.30f, 1.00f, 0.40f, 1.00f)) : ImGui.GetColorU32(ImGuiCol.Border),
+            4f,
+            ImDrawFlags.None,
+            active ? 2f : 1f);
+
+        var imageLabel = active ? "Beast image\nACTIVE" : "Beast image";
         var labelSize = ImGui.CalcTextSize(imageLabel);
         drawList.AddText(
             portraitPos + new Vector2((portraitSize - labelSize.X) * 0.5f, (portraitSize - labelSize.Y) * 0.5f),
-            ImGui.GetColorU32(ImGuiCol.TextDisabled),
+            active ? ImGui.GetColorU32(new Vector4(0.65f, 1.00f, 0.70f, 1.00f)) : ImGui.GetColorU32(ImGuiCol.TextDisabled),
             imageLabel);
 
+        ImGui.Dummy(new Vector2(portraitSize, portraitSize));
         ImGui.SameLine(0f, gap);
         ImGui.BeginGroup();
 
-        var hpText = maxHp == 0
-            ? "HP unknown"
-            : $"{Math.Clamp((int)Math.Round(percent * 100f), 0, 100)}%   {currentHp}/{maxHp}";
-        ImGui.ProgressBar(percent, new Vector2(detailsWidth, 24f), hpText);
+        ImGui.ProgressBar(percent, new Vector2(detailsWidth, 24f), percentText);
 
+        var detailStartX = ImGui.GetCursorPosX();
         if (PetMetadata.TryGet(name, out var metadata))
         {
-            ImGui.TextUnformatted($"Tempered Release: {DisplayOrDash(metadata.TemperedReleaseType)}");
             ImGui.TextUnformatted($"Borrow: {DisplayOrDash(metadata.BorrowType)}");
+            ImGui.SameLine();
+            ImGui.SetCursorPosX(detailStartX + (detailsWidth * 0.5f));
+            ImGui.TextUnformatted($"Release: {DisplayOrDash(metadata.TemperedReleaseType)}");
         }
         else
         {
-            ImGui.TextDisabled("Tempered Release: —");
             ImGui.TextDisabled("Borrow: —");
+            ImGui.SameLine();
+            ImGui.SetCursorPosX(detailStartX + (detailsWidth * 0.5f));
+            ImGui.TextDisabled("Release: —");
         }
 
         ImGui.EndGroup();
         ImGui.EndGroup();
+
+        var panelEnd = ImGui.GetCursorScreenPos();
+        var panelHeight = Math.Max(1f, panelEnd.Y - panelStart.Y);
+        ImGui.SetCursorScreenPos(panelStart);
+        var clicked = ImGui.InvisibleButton($"##ArenaHornPanel{hornIndex}", new Vector2(availableWidth, panelHeight));
+        var hovered = ImGui.IsItemHovered();
+        ImGui.SetCursorScreenPos(panelEnd);
+
+        if (hovered)
+        {
+            drawList.AddRect(panelStart, panelStart + new Vector2(availableWidth, panelHeight), ImGui.GetColorU32(ImGuiCol.TextDisabled), 4f);
+            ImGui.SetMouseCursor(ImGuiMouseCursor.Hand);
+            ImGui.SetTooltip(active ? $"{name} is currently active." : $"Summon Horn {hornIndex + 1}: {name}");
+        }
+
+        if (clicked && !active && name != "(unassigned)")
+            SummonHornRequested?.Invoke(hornIndex);
+
         ImGui.Separator();
     }
 
@@ -287,7 +325,7 @@ public sealed class TeamCompWindow : Window, IDisposable
             ImGui.PopStyleColor(3);
 
         if (ImGui.IsItemHovered())
-            ImGui.SetTooltip(HasActivePet ? "A squad BST is currently active." : "No active squad BST detected. Sends Numpad 6.");
+            ImGui.SetTooltip(HasActivePet ? "A squad BST is currently active." : "No active squad BST detected. Uses First Battlehorn.");
 
         if (pressed && !HasActivePet)
             SummonHorn1Requested?.Invoke();
