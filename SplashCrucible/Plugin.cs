@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Runtime.InteropServices;
 using Dalamud.Game.Addon.Lifecycle;
 using Dalamud.Game.Addon.Lifecycle.AddonArgTypes;
 using Dalamud.Game.Command;
@@ -9,6 +8,7 @@ using Dalamud.IoC;
 using Dalamud.Interface.Windowing;
 using Dalamud.Plugin;
 using Dalamud.Plugin.Services;
+using FFXIVClientStructs.FFXIV.Client.Game;
 using FFXIVClientStructs.FFXIV.Component.GUI;
 using SplashCrucible.Windows;
 
@@ -21,6 +21,7 @@ public sealed class Plugin : IDalamudPlugin
     [PluginService] internal static IFramework Framework { get; private set; } = null!;
     [PluginService] internal static IAddonLifecycle AddonLifecycle { get; private set; } = null!;
     [PluginService] internal static IObjectTable ObjectTable { get; private set; } = null!;
+    [PluginService] internal static IDataManager DataManager { get; private set; } = null!;
     [PluginService] internal static ICommandManager CommandManager { get; private set; } = null!;
     [PluginService] internal static IPluginLog Log { get; private set; } = null!;
 
@@ -28,7 +29,6 @@ public sealed class Plugin : IDalamudPlugin
     private const string TeamCompositionAddonName = "XBMPetParty";
     private const string BoardLayoutAddonName = "XBMStageDetailList";
     private const string InInstanceHudAddonName = "XBMContentsMainHUD";
-    private const string ResultAddonName = "XBMResult";
 
     private const int MinimumPartyRowCount = 12;
     private const int MaximumPartyRowCount = 50;
@@ -41,11 +41,16 @@ public sealed class Plugin : IDalamudPlugin
     private const int FirstEnemyWeaknessIndex = 62;
     private const uint CommenceBattleEventParam = 9;
 
-    private const byte VkNumpad6 = 0x66;
-    private const uint KeyeventfKeyup = 0x0002;
     private static readonly TimeSpan ArenaAutoSummonDelay = TimeSpan.FromMilliseconds(750);
     private static readonly TimeSpan ArenaAutoSummonRetryDelay = TimeSpan.FromMilliseconds(250);
     private static readonly TimeSpan ArenaAutoSummonWindow = TimeSpan.FromSeconds(5);
+
+    private static readonly string[] BattlehornActionNames =
+    {
+        "First Battlehorn",
+        "Second Battlehorn",
+        "Third Battlehorn",
+    };
 
     private static readonly string[] KnownWeaknesses =
     {
@@ -56,6 +61,7 @@ public sealed class Plugin : IDalamudPlugin
     private readonly WindowSystem windowSystem = new("SplashCrucible");
     private readonly TeamCompWindow mainWindow;
     private readonly HashSet<string> activeXbmAddons = new(StringComparer.Ordinal);
+    private readonly uint[] battlehornActionIds = new uint[3];
     private string[] cachedHornNames = { "(unassigned)", "(unassigned)", "(unassigned)" };
     private string[] cachedSquadNames = Enumerable.Repeat("(unknown)", MinimumPartyRowCount).ToArray();
     private uint[] cachedSquadCurrentHp = new uint[MinimumPartyRowCount];
@@ -72,9 +78,12 @@ public sealed class Plugin : IDalamudPlugin
 
     public Plugin()
     {
+        ResolveBattlehornActions();
+
         mainWindow = new TeamCompWindow
         {
             SquadRowClicked = SelectTeamCompositionRow,
+            SummonHornRequested = SummonHorn,
             SummonHorn1Requested = SummonHorn1,
             CommenceBattleRequested = CommenceBattle,
         };
@@ -95,6 +104,25 @@ public sealed class Plugin : IDalamudPlugin
         AddonLifecycle.RegisterListener(AddonEvent.PreReceiveEvent, TeamCompositionAddonName, OnPetPartyReceiveEvent);
 
         Log.Information("Splash Crucible loaded.");
+    }
+
+    private void ResolveBattlehornActions()
+    {
+        var actionSheet = DataManager.GetExcelSheet<Lumina.Excel.Sheets.Action>();
+
+        for (var i = 0; i < BattlehornActionNames.Length; i++)
+        {
+            var wantedName = BattlehornActionNames[i];
+            var action = actionSheet.FirstOrDefault(row =>
+                string.Equals(row.Name.ToString(), wantedName, StringComparison.OrdinalIgnoreCase));
+
+            battlehornActionIds[i] = action.RowId;
+
+            if (action.RowId == 0)
+                Log.Warning("Could not resolve BST action {ActionName} from the Action sheet.", wantedName);
+            else
+                Log.Information("Resolved {ActionName} to action ID {ActionId}.", wantedName, action.RowId);
+        }
     }
 
     private void OnCommand(string command, string arguments)
@@ -176,9 +204,6 @@ public sealed class Plugin : IDalamudPlugin
             if (arenaEnteredForCurrentBoard && inInstanceHudVisible)
                 arenaHudSeenVisible = true;
 
-            // Observed in-game: XBMContentsMainHUD is visible in the Arena and remains allocated
-            // but hidden on the playable Map. Once Arena has actually shown the HUD, its hide
-            // transition is therefore the preferred Arena -> Map signal.
             if (arenaEnteredForCurrentBoard && arenaHudSeenVisible && !inInstanceHudVisible)
             {
                 ReturnToMap("Arena HUD became hidden");
@@ -277,8 +302,8 @@ public sealed class Plugin : IDalamudPlugin
         pendingArenaAutoSummonAt = null;
         arenaAutoSummonDeadline = null;
         autoSummonCompletedForCurrentBoard = true;
-        Log.Information("Arena entered with no active squad BST; auto-summoning Horn 1.");
-        SendNumpad6();
+        Log.Information("Arena entered with no active squad BST; using First Battlehorn.");
+        UseBattlehorn(0);
     }
 
     private bool HasOwnedSquadPet()
@@ -310,6 +335,31 @@ public sealed class Plugin : IDalamudPlugin
         return false;
     }
 
+    private bool IsHornActive(int hornIndex)
+    {
+        if (hornIndex < 0 || hornIndex >= cachedHornNames.Length)
+            return false;
+
+        var name = cachedHornNames[hornIndex];
+        if (string.IsNullOrWhiteSpace(name) || name is "(unknown)" or "(unassigned)")
+            return false;
+
+        var player = ObjectTable.LocalPlayer;
+        if (player == null || player.EntityId == 0)
+            return false;
+
+        foreach (var gameObject in ObjectTable)
+        {
+            if (gameObject == null || gameObject.OwnerId != player.EntityId)
+                continue;
+
+            if (string.Equals(gameObject.Name.TextValue, name, StringComparison.OrdinalIgnoreCase))
+                return true;
+        }
+
+        return false;
+    }
+
     private bool IsCachedTopEnemyPresent()
     {
         if (string.IsNullOrWhiteSpace(cachedTopEnemyName))
@@ -332,13 +382,44 @@ public sealed class Plugin : IDalamudPlugin
         if (HasOwnedSquadPet())
             return;
 
-        SendNumpad6();
+        UseBattlehorn(0);
     }
 
-    private static void SendNumpad6()
+    private void SummonHorn(int hornIndex)
     {
-        keybd_event(VkNumpad6, 0, 0, UIntPtr.Zero);
-        keybd_event(VkNumpad6, 0, KeyeventfKeyup, UIntPtr.Zero);
+        if (hornIndex < 0 || hornIndex >= 3 || IsHornActive(hornIndex))
+            return;
+
+        UseBattlehorn(hornIndex);
+    }
+
+    private unsafe void UseBattlehorn(int hornIndex)
+    {
+        if (hornIndex < 0 || hornIndex >= battlehornActionIds.Length)
+            return;
+
+        var actionId = battlehornActionIds[hornIndex];
+        if (actionId == 0)
+        {
+            ResolveBattlehornActions();
+            actionId = battlehornActionIds[hornIndex];
+        }
+
+        if (actionId == 0)
+        {
+            Log.Warning("Cannot use {ActionName}; action ID is unresolved.", BattlehornActionNames[hornIndex]);
+            return;
+        }
+
+        var actionManager = ActionManager.Instance();
+        if (actionManager == null)
+        {
+            Log.Warning("Cannot use {ActionName}; ActionManager is unavailable.", BattlehornActionNames[hornIndex]);
+            return;
+        }
+
+        Log.Information("Using {ActionName} via ActionManager (action ID {ActionId}).", BattlehornActionNames[hornIndex], actionId);
+        actionManager->UseAction(ActionType.Action, actionId);
     }
 
     private unsafe void CommenceBattle()
@@ -563,7 +644,4 @@ public sealed class Plugin : IDalamudPlugin
         windowSystem.RemoveAllWindows();
         mainWindow.Dispose();
     }
-
-    [DllImport("user32.dll")]
-    private static extern void keybd_event(byte bVk, byte bScan, uint dwFlags, UIntPtr dwExtraInfo);
 }
