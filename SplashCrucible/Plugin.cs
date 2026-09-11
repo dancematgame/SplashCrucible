@@ -204,13 +204,13 @@ public sealed class Plugin : IDalamudPlugin
             if (arenaEnteredForCurrentBoard && inInstanceHudVisible)
                 arenaHudSeenVisible = true;
 
-            if (arenaEnteredForCurrentBoard && arenaHudSeenVisible && !inInstanceHudVisible)
-            {
-                ReturnToMap("Arena HUD became hidden");
-            }
-            else if (arenaEnteredForCurrentBoard && teamPartyVisible)
+            if (arenaEnteredForCurrentBoard && teamPartyVisible)
             {
                 ReturnToMap("Team Composition opened on duty map");
+            }
+            else if (arenaEnteredForCurrentBoard && arenaHudSeenVisible && !inInstanceHudVisible && !IsCachedTopEnemyPresent())
+            {
+                ReturnToMap("Arena HUD became hidden after cached enemy disappeared");
             }
         }
 
