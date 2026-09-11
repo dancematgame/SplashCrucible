@@ -21,9 +21,6 @@ public enum CrucibleMode
 
 public sealed class TeamCompWindow : Window, IDisposable
 {
-    private const string InInstanceHudAddonName = "XBMContentsMainHUD";
-    private const int ArenaHudProbeLimit = 200;
-
     private readonly uint[] arenaLastKnownCurrentHp = new uint[3];
     private readonly uint[] arenaLastKnownMaxHp = new uint[3];
     private readonly string[] arenaLastKnownNames = { string.Empty, string.Empty, string.Empty };
@@ -96,19 +93,23 @@ public sealed class TeamCompWindow : Window, IDisposable
         ImGui.Separator();
         ImGui.TextUnformatted($"Mode: {modeText}");
 
-        ImGui.Spacing();
-        DrawSectionHeader("Party");
-        DrawPartyRow(0);
-        DrawPartyRow(1);
-        DrawPartyRow(2);
-
         if (CurrentMode == CrucibleMode.Arena)
         {
             ImGui.Spacing();
-            DrawArenaDiagnostics();
+            DrawArenaHornPanel(0);
+            ImGui.Spacing();
+            DrawArenaHornPanel(1);
+            ImGui.Spacing();
+            DrawArenaHornPanel(2);
         }
         else
         {
+            ImGui.Spacing();
+            DrawSectionHeader("Party");
+            DrawPartyRow(0);
+            DrawPartyRow(1);
+            DrawPartyRow(2);
+
             ImGui.Spacing();
             DrawSectionHeader("Squad");
             for (var i = 0; i < SquadNames.Length; i++)
@@ -163,65 +164,56 @@ public sealed class TeamCompWindow : Window, IDisposable
         previousMode = CurrentMode;
     }
 
-    private unsafe void DrawArenaDiagnostics()
+    private void DrawArenaHornPanel(int hornIndex)
     {
-        DrawSectionHeader("Arena Diagnostics");
-        ImGui.TextUnformatted("Horn HP: retained latest-known value / live owned object value");
+        var name = GetHornName(hornIndex);
+        var currentHp = arenaLastKnownCurrentHp[hornIndex];
+        var maxHp = arenaLastKnownMaxHp[hornIndex];
+        var percent = maxHp == 0 ? 0f : Math.Clamp((float)currentHp / maxHp, 0f, 1f);
+        var availableWidth = ImGui.GetContentRegionAvail().X;
+        const float portraitSize = 82f;
+        const float gap = 12f;
+        var detailsWidth = Math.Max(180f, availableWidth - portraitSize - gap);
 
-        for (var hornIndex = 0; hornIndex < 3; hornIndex++)
+        ImGui.BeginGroup();
+        ImGui.TextUnformatted($"Horn {hornIndex + 1} — {name}");
+
+        var portraitPos = ImGui.GetCursorScreenPos();
+        ImGui.InvisibleButton($"##HornPortrait{hornIndex}", new Vector2(portraitSize, portraitSize));
+        var portraitMax = portraitPos + new Vector2(portraitSize, portraitSize);
+        var drawList = ImGui.GetWindowDrawList();
+        drawList.AddRectFilled(portraitPos, portraitMax, ImGui.GetColorU32(ImGuiCol.FrameBg), 4f);
+        drawList.AddRect(portraitPos, portraitMax, ImGui.GetColorU32(ImGuiCol.Border), 4f);
+
+        var imageLabel = "Beast image";
+        var labelSize = ImGui.CalcTextSize(imageLabel);
+        drawList.AddText(
+            portraitPos + new Vector2((portraitSize - labelSize.X) * 0.5f, (portraitSize - labelSize.Y) * 0.5f),
+            ImGui.GetColorU32(ImGuiCol.TextDisabled),
+            imageLabel);
+
+        ImGui.SameLine(0f, gap);
+        ImGui.BeginGroup();
+
+        var hpText = maxHp == 0
+            ? "HP unknown"
+            : $"{Math.Clamp((int)Math.Round(percent * 100f), 0, 100)}%   {currentHp}/{maxHp}";
+        ImGui.ProgressBar(percent, new Vector2(detailsWidth, 24f), hpText);
+
+        if (PetMetadata.TryGet(name, out var metadata))
         {
-            var name = GetHornName(hornIndex);
-            var liveCharacter = FindOwnedHornCharacter(name);
-
-            var retainedText = FormatHp(arenaLastKnownCurrentHp[hornIndex], arenaLastKnownMaxHp[hornIndex]);
-            var liveText = liveCharacter is null
-                ? "not spawned"
-                : FormatHp(liveCharacter.CurrentHp, liveCharacter.MaxHp);
-
-            ImGui.BulletText($"Horn {hornIndex + 1} — {name}: retained {retainedText} / live {liveText}");
+            ImGui.TextUnformatted($"Tempered Release: {DisplayOrDash(metadata.TemperedReleaseType)}");
+            ImGui.TextUnformatted($"Borrow: {DisplayOrDash(metadata.BorrowType)}");
+        }
+        else
+        {
+            ImGui.TextDisabled("Tempered Release: —");
+            ImGui.TextDisabled("Borrow: —");
         }
 
-        ImGui.Spacing();
-        if (!ImGui.CollapsingHeader($"{InInstanceHudAddonName} AtkValues (non-empty, first {ArenaHudProbeLimit})"))
-            return;
-
-        var addon = Plugin.GameGui.GetAddonByName<AtkUnitBase>(InInstanceHudAddonName);
-        if (addon == null)
-        {
-            ImGui.TextDisabled("HUD addon is not allocated.");
-            return;
-        }
-
-        if (addon->AtkValues == null || addon->AtkValuesCount == 0)
-        {
-            ImGui.TextDisabled("HUD addon has no AtkValues.");
-            return;
-        }
-
-        ImGui.TextUnformatted($"AtkValuesCount: {addon->AtkValuesCount}");
-        var count = Math.Min((int)addon->AtkValuesCount, ArenaHudProbeLimit);
-        var any = false;
-
-        for (var index = 0; index < count; index++)
-        {
-            var value = addon->AtkValues[index];
-            var type = value.Type & AtkValueType.TypeMask;
-            if (type is AtkValueType.Undefined or AtkValueType.Null)
-                continue;
-
-            var text = value.GetValueAsString();
-            if (string.IsNullOrWhiteSpace(text))
-                continue;
-
-            any = true;
-            if (text.Length > 120)
-                text = text[..120] + "…";
-
-            ImGui.TextUnformatted($"[{index}] {type}: {text}");
-        }
-
-        if (!any)
-            ImGui.TextDisabled("No non-empty values found in the probe range.");
+        ImGui.EndGroup();
+        ImGui.EndGroup();
+        ImGui.Separator();
     }
 
     private static ICharacter? FindOwnedHornCharacter(string name)
@@ -243,15 +235,6 @@ public sealed class TeamCompWindow : Window, IDisposable
         }
 
         return null;
-    }
-
-    private static string FormatHp(uint currentHp, uint maxHp)
-    {
-        if (maxHp == 0)
-            return "—";
-
-        var percent = Math.Clamp((int)Math.Round((double)currentHp * 100.0 / maxHp), 0, 100);
-        return $"{currentHp}/{maxHp} ({percent}%)";
     }
 
     private unsafe void DrawDebugProbe()
@@ -315,9 +298,7 @@ public sealed class TeamCompWindow : Window, IDisposable
         var name = GetHornName(hornIndex);
         var squadIndex = Array.FindIndex(SquadNames,
             squadName => string.Equals(squadName, name, StringComparison.OrdinalIgnoreCase));
-        var (currentHp, maxHp) = CurrentMode == CrucibleMode.Arena
-            ? (arenaLastKnownCurrentHp[hornIndex], arenaLastKnownMaxHp[hornIndex])
-            : GetSquadHp(squadIndex);
+        var (currentHp, maxHp) = GetSquadHp(squadIndex);
 
         var startX = ImGui.GetCursorPosX();
         var rowY = ImGui.GetCursorPosY();
