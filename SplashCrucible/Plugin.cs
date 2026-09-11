@@ -44,6 +44,7 @@ public sealed class Plugin : IDalamudPlugin
     private static readonly TimeSpan ArenaAutoSummonDelay = TimeSpan.FromMilliseconds(750);
     private static readonly TimeSpan ArenaAutoSummonRetryDelay = TimeSpan.FromMilliseconds(250);
     private static readonly TimeSpan ArenaAutoSummonWindow = TimeSpan.FromSeconds(5);
+    private static readonly TimeSpan ArenaReviveGrace = TimeSpan.FromSeconds(10);
 
     private static readonly string[] BattlehornActionNames =
     {
@@ -75,6 +76,8 @@ public sealed class Plugin : IDalamudPlugin
     private DateTime? pendingArenaAutoSummonAt;
     private DateTime? arenaAutoSummonDeadline;
     private bool boardLayoutWasVisible;
+    private bool arenaDeathObserved;
+    private DateTime? arenaReviveGraceUntil;
 
     public Plugin()
     {
@@ -170,6 +173,29 @@ public sealed class Plugin : IDalamudPlugin
         var boardLayoutVisible = IsAddonVisible(BoardLayoutAddonName);
         var inInstanceHudPresent = GameGui.GetAddonByName(InInstanceHudAddonName) != nint.Zero;
         var inInstanceHudVisible = IsAddonVisible(InInstanceHudAddonName);
+        var localPlayer = ObjectTable.LocalPlayer;
+        var playerDead = localPlayer != null && localPlayer.CurrentHp == 0;
+
+        if (arenaEnteredForCurrentBoard)
+        {
+            if (playerDead)
+            {
+                arenaDeathObserved = true;
+                arenaReviveGraceUntil = null;
+            }
+            else if (arenaDeathObserved)
+            {
+                arenaDeathObserved = false;
+                arenaReviveGraceUntil = DateTime.UtcNow + ArenaReviveGrace;
+                Log.Information("Player revived in Arena; suppressing Map transition briefly while Arena objects reload.");
+            }
+
+            if (inInstanceHudVisible || IsCachedTopEnemyPresent())
+                arenaReviveGraceUntil = null;
+        }
+
+        var reviveProtected = playerDead ||
+            (arenaReviveGraceUntil is not null && DateTime.UtcNow < arenaReviveGraceUntil.Value);
 
         if (boardLayoutVisible && !boardLayoutWasVisible)
         {
@@ -186,10 +212,15 @@ public sealed class Plugin : IDalamudPlugin
 
         if (!inInstanceHudPresent)
         {
-            arenaEnteredForCurrentBoard = false;
-            arenaHudSeenVisible = false;
-            pendingArenaAutoSummonAt = null;
-            arenaAutoSummonDeadline = null;
+            if (!arenaEnteredForCurrentBoard || !reviveProtected)
+            {
+                arenaEnteredForCurrentBoard = false;
+                arenaHudSeenVisible = false;
+                pendingArenaAutoSummonAt = null;
+                arenaAutoSummonDeadline = null;
+                arenaDeathObserved = false;
+                arenaReviveGraceUntil = null;
+            }
         }
         else
         {
@@ -208,7 +239,7 @@ public sealed class Plugin : IDalamudPlugin
             {
                 ReturnToMap("Team Composition opened on duty map");
             }
-            else if (arenaEnteredForCurrentBoard && arenaHudSeenVisible && !inInstanceHudVisible && !IsCachedTopEnemyPresent())
+            else if (arenaEnteredForCurrentBoard && arenaHudSeenVisible && !inInstanceHudVisible && !IsCachedTopEnemyPresent() && !reviveProtected)
             {
                 ReturnToMap("Arena HUD became hidden after cached enemy disappeared");
             }
@@ -218,8 +249,10 @@ public sealed class Plugin : IDalamudPlugin
 
         if (teamPartyVisible && !inInstanceHudPresent)
             mainWindow.CurrentMode = CrucibleMode.SelectSquad;
+        else if (arenaEnteredForCurrentBoard)
+            mainWindow.CurrentMode = CrucibleMode.Arena;
         else if (inInstanceHudPresent)
-            mainWindow.CurrentMode = arenaEnteredForCurrentBoard ? CrucibleMode.Arena : CrucibleMode.Map;
+            mainWindow.CurrentMode = CrucibleMode.Map;
         else
             mainWindow.CurrentMode = CrucibleMode.Unknown;
 
@@ -247,6 +280,8 @@ public sealed class Plugin : IDalamudPlugin
         autoSummonCompletedForCurrentBoard = false;
         pendingArenaAutoSummonAt = null;
         arenaAutoSummonDeadline = null;
+        arenaDeathObserved = false;
+        arenaReviveGraceUntil = null;
     }
 
     private void ReturnToMap(string reason)
@@ -256,6 +291,8 @@ public sealed class Plugin : IDalamudPlugin
         pendingArenaAutoSummonAt = null;
         arenaAutoSummonDeadline = null;
         autoSummonCompletedForCurrentBoard = true;
+        arenaDeathObserved = false;
+        arenaReviveGraceUntil = null;
         cachedTopEnemyName = string.Empty;
         cachedTopEnemyWeakness = string.Empty;
         Log.Information("{Reason}; returning state to Map.", reason);
