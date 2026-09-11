@@ -2,6 +2,7 @@ using System;
 using System.Linq;
 using System.Numerics;
 using Dalamud.Bindings.ImGui;
+using Dalamud.Game.ClientState.Objects.Types;
 using Dalamud.Game.Text.SeStringHandling;
 using Dalamud.Interface.Utility;
 using Dalamud.Interface.Windowing;
@@ -20,6 +21,9 @@ public enum CrucibleMode
 
 public sealed class TeamCompWindow : Window, IDisposable
 {
+    private const string InInstanceHudAddonName = "XBMContentsMainHUD";
+    private const int ArenaHudProbeLimit = 200;
+
     private static string DisplayVersion
     {
         get
@@ -91,7 +95,12 @@ public sealed class TeamCompWindow : Window, IDisposable
         DrawPartyRow(1);
         DrawPartyRow(2);
 
-        if (CurrentMode != CrucibleMode.Arena)
+        if (CurrentMode == CrucibleMode.Arena)
+        {
+            ImGui.Spacing();
+            DrawArenaDiagnostics();
+        }
+        else
         {
             ImGui.Spacing();
             DrawSectionHeader("Squad");
@@ -110,6 +119,100 @@ public sealed class TeamCompWindow : Window, IDisposable
 
         ImGui.Spacing();
         DrawDebugProbe();
+    }
+
+    private unsafe void DrawArenaDiagnostics()
+    {
+        DrawSectionHeader("Arena Diagnostics");
+        ImGui.TextUnformatted("Horn HP: cached Team Composition value / live owned object value");
+
+        for (var hornIndex = 0; hornIndex < 3; hornIndex++)
+        {
+            var name = GetHornName(hornIndex);
+            var squadIndex = Array.FindIndex(SquadNames,
+                squadName => string.Equals(squadName, name, StringComparison.OrdinalIgnoreCase));
+            var (cachedCurrent, cachedMax) = GetSquadHp(squadIndex);
+            var liveCharacter = FindOwnedHornCharacter(name);
+
+            var cachedText = FormatHp(cachedCurrent, cachedMax);
+            var liveText = liveCharacter is null
+                ? "not spawned"
+                : FormatHp(liveCharacter.CurrentHp, liveCharacter.MaxHp);
+
+            ImGui.BulletText($"Horn {hornIndex + 1} — {name}: cached {cachedText} / live {liveText}");
+        }
+
+        ImGui.Spacing();
+        if (!ImGui.CollapsingHeader($"{InInstanceHudAddonName} AtkValues (non-empty, first {ArenaHudProbeLimit})"))
+            return;
+
+        var addon = Plugin.GameGui.GetAddonByName<AtkUnitBase>(InInstanceHudAddonName);
+        if (addon == null)
+        {
+            ImGui.TextDisabled("HUD addon is not allocated.");
+            return;
+        }
+
+        if (addon->AtkValues == null || addon->AtkValuesCount == 0)
+        {
+            ImGui.TextDisabled("HUD addon has no AtkValues.");
+            return;
+        }
+
+        ImGui.TextUnformatted($"AtkValuesCount: {addon->AtkValuesCount}");
+        var count = Math.Min((int)addon->AtkValuesCount, ArenaHudProbeLimit);
+        var any = false;
+
+        for (var index = 0; index < count; index++)
+        {
+            var value = addon->AtkValues[index];
+            var type = value.Type & AtkValueType.TypeMask;
+            if (type is AtkValueType.Undefined or AtkValueType.Null)
+                continue;
+
+            var text = value.GetValueAsString();
+            if (string.IsNullOrWhiteSpace(text))
+                continue;
+
+            any = true;
+            if (text.Length > 120)
+                text = text[..120] + "…";
+
+            ImGui.TextUnformatted($"[{index}] {type}: {text}");
+        }
+
+        if (!any)
+            ImGui.TextDisabled("No non-empty values found in the probe range.");
+    }
+
+    private static ICharacter? FindOwnedHornCharacter(string name)
+    {
+        if (string.IsNullOrWhiteSpace(name) || name is "(unassigned)" or "(unknown)")
+            return null;
+
+        var player = Plugin.ObjectTable.LocalPlayer;
+        if (player == null || player.EntityId == 0)
+            return null;
+
+        foreach (var gameObject in Plugin.ObjectTable)
+        {
+            if (gameObject is not ICharacter character || gameObject.OwnerId != player.EntityId)
+                continue;
+
+            if (string.Equals(gameObject.Name.TextValue, name, StringComparison.OrdinalIgnoreCase))
+                return character;
+        }
+
+        return null;
+    }
+
+    private static string FormatHp(uint currentHp, uint maxHp)
+    {
+        if (maxHp == 0)
+            return "—";
+
+        var percent = Math.Clamp((int)Math.Round((double)currentHp * 100.0 / maxHp), 0, 100);
+        return $"{currentHp}/{maxHp} ({percent}%)";
     }
 
     private unsafe void DrawDebugProbe()
