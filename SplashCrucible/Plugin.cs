@@ -30,7 +30,7 @@ public sealed class Plugin : IDalamudPlugin
     private const string BoardLayoutAddonName = "XBMStageDetailList";
     private const string InInstanceHudAddonName = "XBMContentsMainHUD";
 
-    private const int MinimumPartyRowCount = 12;
+    private const int MinimumPartyRowCount = 3;
     private const int MaximumPartyRowCount = 50;
     private const int PartyRowStride = 77;
     private const int FirstPartyNameIndex = 9;
