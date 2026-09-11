@@ -6,6 +6,7 @@ using Dalamud.Game.ClientState.Objects.Types;
 using Dalamud.Game.Text.SeStringHandling;
 using Dalamud.Interface.Utility;
 using Dalamud.Interface.Windowing;
+using FFXIVClientStructs.FFXIV.Client.Game;
 using FFXIVClientStructs.FFXIV.Component.GUI;
 using SplashCrucible.Data;
 
@@ -24,7 +25,15 @@ public sealed class TeamCompWindow : Window, IDisposable
     private readonly uint[] arenaLastKnownCurrentHp = new uint[3];
     private readonly uint[] arenaLastKnownMaxHp = new uint[3];
     private readonly string[] arenaLastKnownNames = { string.Empty, string.Empty, string.Empty };
+    private readonly uint[] battlehornActionIds = new uint[3];
     private CrucibleMode previousMode = CrucibleMode.Unknown;
+
+    private static readonly string[] BattlehornActionNames =
+    {
+        "First Battlehorn",
+        "Second Battlehorn",
+        "Third Battlehorn",
+    };
 
     private static string DisplayVersion
     {
@@ -202,7 +211,7 @@ public sealed class TeamCompWindow : Window, IDisposable
             ImDrawFlags.None,
             active ? 2f : 1f);
 
-        var imageLabel = active ? "Beast image\nACTIVE" : "Beast image";
+        var imageLabel = active ? $"Beast image\n{GetBattlehornCooldownText(hornIndex)}" : "Beast image";
         var labelSize = ImGui.CalcTextSize(imageLabel);
         drawList.AddText(
             portraitPos + new Vector2((portraitSize - labelSize.X) * 0.5f, (portraitSize - labelSize.Y) * 0.5f),
@@ -252,6 +261,38 @@ public sealed class TeamCompWindow : Window, IDisposable
             SummonHornRequested?.Invoke(hornIndex);
 
         ImGui.Separator();
+    }
+
+    private unsafe string GetBattlehornCooldownText(int hornIndex)
+    {
+        if (hornIndex < 0 || hornIndex >= battlehornActionIds.Length)
+            return "Unknown";
+
+        var actionId = battlehornActionIds[hornIndex];
+        if (actionId == 0)
+        {
+            var wantedName = BattlehornActionNames[hornIndex];
+            var action = Plugin.DataManager.GetExcelSheet<Lumina.Excel.Sheets.Action>()
+                .FirstOrDefault(row => string.Equals(row.Name.ToString(), wantedName, StringComparison.OrdinalIgnoreCase));
+            actionId = action.RowId;
+            battlehornActionIds[hornIndex] = actionId;
+        }
+
+        if (actionId == 0)
+            return "Unknown";
+
+        var actionManager = ActionManager.Instance();
+        if (actionManager == null)
+            return "Unknown";
+
+        if (actionManager->IsActionOffCooldown(ActionType.Action, actionId))
+            return "Ready";
+
+        var total = actionManager->GetRecastTime(ActionType.Action, actionId);
+        var elapsed = actionManager->GetRecastTimeElapsed(ActionType.Action, actionId);
+        var remaining = Math.Max(0f, total - elapsed);
+
+        return remaining <= 0.05f ? "Ready" : $"{Math.Ceiling(remaining)}s";
     }
 
     private static ICharacter? FindOwnedHornCharacter(string name)
