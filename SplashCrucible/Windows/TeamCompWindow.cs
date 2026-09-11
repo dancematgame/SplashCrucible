@@ -91,10 +91,13 @@ public sealed class TeamCompWindow : Window, IDisposable
         DrawPartyRow(1);
         DrawPartyRow(2);
 
-        ImGui.Spacing();
-        DrawSectionHeader("Squad");
-        for (var i = 0; i < SquadNames.Length; i++)
-            DrawSquadRow(i, GetSquadName(i));
+        if (CurrentMode != CrucibleMode.Arena)
+        {
+            ImGui.Spacing();
+            DrawSectionHeader("Squad");
+            for (var i = 0; i < SquadNames.Length; i++)
+                DrawSquadRow(i, GetSquadName(i));
+        }
 
         if (BoardLayoutVisible)
         {
