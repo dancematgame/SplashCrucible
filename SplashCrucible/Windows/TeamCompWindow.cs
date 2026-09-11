@@ -40,7 +40,12 @@ public sealed class TeamCompWindow : Window, IDisposable
         get
         {
             var version = typeof(TeamCompWindow).Assembly.GetName().Version;
-            return version is null ? "unknown" : $"{version.Major}.{version.Minor}.{version.Build}";
+            if (version is null)
+                return "unknown";
+
+            return version.Build <= 0
+                ? $"{version.Major}.{version.Minor}"
+                : $"{version.Major}.{version.Minor}.{version.Build}";
         }
     }
 
@@ -131,15 +136,6 @@ public sealed class TeamCompWindow : Window, IDisposable
             ImGui.Spacing();
             DrawCenteredButton("Commence Battle", () => CommenceBattleRequested?.Invoke());
         }
-
-        if (CurrentMode != CrucibleMode.Arena)
-        {
-            ImGui.Spacing();
-            DrawSummonButton();
-        }
-
-        ImGui.Spacing();
-        DrawDebugProbe();
     }
 
     private void UpdateArenaHpCache()
@@ -193,7 +189,17 @@ public sealed class TeamCompWindow : Window, IDisposable
         var panelStart = ImGui.GetCursorScreenPos();
 
         ImGui.BeginGroup();
-        ImGui.TextUnformatted($"Horn {hornIndex + 1} — {name}");
+        ImGui.TextUnformatted(name);
+        if (PetMetadata.TryGet(name, out var titleMetadata))
+        {
+            ImGui.SameLine();
+            DrawAspectIcon(titleMetadata.Aspect, IsWeaknessMatch(titleMetadata.Aspect));
+        }
+        else
+        {
+            ImGui.SameLine();
+            ImGui.TextDisabled("?");
+        }
 
         var portraitPos = ImGui.GetCursorScreenPos();
         var portraitMax = portraitPos + new Vector2(portraitSize, portraitSize);
@@ -211,12 +217,12 @@ public sealed class TeamCompWindow : Window, IDisposable
             ImDrawFlags.None,
             active ? 2f : 1f);
 
-        var imageLabel = active ? $"Beast image\n{GetBattlehornCooldownText(hornIndex)}" : "Beast image";
-        var labelSize = ImGui.CalcTextSize(imageLabel);
+        var cooldownText = GetBattlehornCooldownText(hornIndex);
+        var labelSize = ImGui.CalcTextSize(cooldownText);
         drawList.AddText(
             portraitPos + new Vector2((portraitSize - labelSize.X) * 0.5f, (portraitSize - labelSize.Y) * 0.5f),
-            active ? ImGui.GetColorU32(new Vector4(0.65f, 1.00f, 0.70f, 1.00f)) : ImGui.GetColorU32(ImGuiCol.TextDisabled),
-            imageLabel);
+            active ? ImGui.GetColorU32(new Vector4(0.65f, 1.00f, 0.70f, 1.00f)) : ImGui.GetColorU32(ImGuiCol.Text),
+            cooldownText);
 
         ImGui.Dummy(new Vector2(portraitSize, portraitSize));
         ImGui.SameLine(0f, gap);
@@ -254,7 +260,7 @@ public sealed class TeamCompWindow : Window, IDisposable
         {
             drawList.AddRect(panelStart, panelStart + new Vector2(availableWidth, panelHeight), ImGui.GetColorU32(ImGuiCol.TextDisabled), 4f);
             ImGui.SetMouseCursor(ImGuiMouseCursor.Hand);
-            ImGui.SetTooltip(active ? $"{name} is currently active." : $"Summon Horn {hornIndex + 1}: {name}");
+            ImGui.SetTooltip(active ? $"{name} is currently active." : $"Summon {name}");
         }
 
         if (clicked && !active && name != "(unassigned)")
@@ -316,60 +322,12 @@ public sealed class TeamCompWindow : Window, IDisposable
         return null;
     }
 
-    private unsafe void DrawDebugProbe()
-    {
-        DrawSectionHeader("Debug");
-
-        ImGui.TextUnformatted($"Squad rows detected: {SquadNames.Length}");
-        ImGui.TextUnformatted($"Active squad BST detected: {(HasActivePet ? "YES" : "NO")}");
-        ImGui.TextUnformatted($"Top enemy weakness cached: {(string.IsNullOrWhiteSpace(TopEnemyWeakness) ? "(none)" : TopEnemyWeakness)}");
-
-        ImGui.Spacing();
-        ImGui.TextUnformatted("XBM addon probe (allocated / visible)");
-
-        var addonNames = KnownXbmAddons
-            .Concat(ActiveXbmAddons)
-            .Distinct(StringComparer.Ordinal)
-            .OrderBy(name => name, StringComparer.Ordinal);
-
-        foreach (var addonName in addonNames)
-        {
-            var addon = Plugin.GameGui.GetAddonByName<AtkUnitBase>(addonName);
-            var exists = addon != null;
-            var visible = exists && addon->IsVisible;
-            ImGui.BulletText($"{addonName}: {(exists ? "YES" : "no")} / {(visible ? "VISIBLE" : "hidden")}");
-        }
-    }
-
     private static void DrawCenteredButton(string label, Action onPressed)
     {
         var buttonSize = ImGui.CalcTextSize(label) + new Vector2(24f, 10f);
         ImGui.SetCursorPosX(ImGui.GetCursorPosX() + Math.Max(0f, (ImGui.GetContentRegionAvail().X - buttonSize.X) * 0.5f));
         if (ImGui.Button(label, buttonSize))
             onPressed();
-    }
-
-    private void DrawSummonButton()
-    {
-        if (!HasActivePet)
-        {
-            ImGui.PushStyleColor(ImGuiCol.Button, new Vector4(0.90f, 0.68f, 0.10f, 1.00f));
-            ImGui.PushStyleColor(ImGuiCol.ButtonHovered, new Vector4(1.00f, 0.80f, 0.18f, 1.00f));
-            ImGui.PushStyleColor(ImGuiCol.ButtonActive, new Vector4(0.80f, 0.55f, 0.05f, 1.00f));
-        }
-
-        var buttonSize = ImGui.CalcTextSize("Summon 1") + new Vector2(24f, 10f);
-        ImGui.SetCursorPosX(ImGui.GetCursorPosX() + Math.Max(0f, (ImGui.GetContentRegionAvail().X - buttonSize.X) * 0.5f));
-        var pressed = ImGui.Button("Summon 1", buttonSize);
-
-        if (!HasActivePet)
-            ImGui.PopStyleColor(3);
-
-        if (ImGui.IsItemHovered())
-            ImGui.SetTooltip(HasActivePet ? "A squad BST is currently active." : "No active squad BST detected. Uses First Battlehorn.");
-
-        if (pressed && !HasActivePet)
-            SummonHorn1Requested?.Invoke();
     }
 
     private void DrawPartyRow(int hornIndex)
