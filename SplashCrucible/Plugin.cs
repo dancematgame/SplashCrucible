@@ -325,7 +325,7 @@ public sealed class Plugin : IDalamudPlugin
 
         foreach (var gameObject in ObjectTable)
         {
-            if (gameObject == null || gameObject.OwnerId != playerEntityId)
+            if (gameObject == null || gameObject.OwnerId != playerEntityId || !gameObject.IsTargetable)
                 continue;
 
             if (knownSquadNames.Contains(gameObject.Name.TextValue))
@@ -350,7 +350,7 @@ public sealed class Plugin : IDalamudPlugin
 
         foreach (var gameObject in ObjectTable)
         {
-            if (gameObject == null || gameObject.OwnerId != player.EntityId)
+            if (gameObject == null || gameObject.OwnerId != player.EntityId || !gameObject.IsTargetable)
                 continue;
 
             if (string.Equals(gameObject.Name.TextValue, name, StringComparison.OrdinalIgnoreCase))
