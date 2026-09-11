@@ -265,7 +265,7 @@ public sealed class TeamCompWindow : Window, IDisposable
 
         foreach (var gameObject in Plugin.ObjectTable)
         {
-            if (gameObject is not ICharacter character || gameObject.OwnerId != player.EntityId)
+            if (gameObject is not ICharacter character || gameObject.OwnerId != player.EntityId || !gameObject.IsTargetable)
                 continue;
 
             if (string.Equals(gameObject.Name.TextValue, name, StringComparison.OrdinalIgnoreCase))
