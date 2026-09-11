@@ -93,7 +93,7 @@ public sealed class TeamCompWindow : Window, IDisposable
 
         ImGui.Spacing();
         DrawSectionHeader("Squad");
-        for (var i = 0; i < 12; i++)
+        for (var i = 0; i < SquadNames.Length; i++)
             DrawSquadRow(i, GetSquadName(i));
 
         if (BoardLayoutVisible)
@@ -113,6 +113,7 @@ public sealed class TeamCompWindow : Window, IDisposable
     {
         DrawSectionHeader("Debug");
 
+        ImGui.TextUnformatted($"Squad rows detected: {SquadNames.Length}");
         ImGui.TextUnformatted($"Active squad BST detected: {(HasActivePet ? "YES" : "NO")}");
         ImGui.TextUnformatted($"Top enemy weakness cached: {(string.IsNullOrWhiteSpace(TopEnemyWeakness) ? "(none)" : TopEnemyWeakness)}");
 

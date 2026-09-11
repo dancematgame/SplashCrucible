@@ -30,7 +30,8 @@ public sealed class Plugin : IDalamudPlugin
     private const string InInstanceHudAddonName = "XBMContentsMainHUD";
     private const string ResultAddonName = "XBMResult";
 
-    private const int PartyRowCount = 12;
+    private const int MinimumPartyRowCount = 12;
+    private const int MaximumPartyRowCount = 50;
     private const int PartyRowStride = 77;
     private const int FirstPartyNameIndex = 9;
     private const int FirstPartyAssignmentIndex = 80;
@@ -56,9 +57,9 @@ public sealed class Plugin : IDalamudPlugin
     private readonly TeamCompWindow mainWindow;
     private readonly HashSet<string> activeXbmAddons = new(StringComparer.Ordinal);
     private string[] cachedHornNames = { "(unassigned)", "(unassigned)", "(unassigned)" };
-    private string[] cachedSquadNames = Enumerable.Repeat("(unknown)", PartyRowCount).ToArray();
-    private uint[] cachedSquadCurrentHp = new uint[PartyRowCount];
-    private uint[] cachedSquadMaxHp = new uint[PartyRowCount];
+    private string[] cachedSquadNames = Enumerable.Repeat("(unknown)", MinimumPartyRowCount).ToArray();
+    private uint[] cachedSquadCurrentHp = new uint[MinimumPartyRowCount];
+    private uint[] cachedSquadMaxHp = new uint[MinimumPartyRowCount];
     private string cachedTopEnemyName = string.Empty;
     private string cachedTopEnemyWeakness = string.Empty;
     private bool syntheticTeamCompositionClick;
@@ -138,17 +139,11 @@ public sealed class Plugin : IDalamudPlugin
 
     private unsafe void OnFrameworkUpdate(IFramework framework)
     {
-        // Several XBM addons persist after being hidden, so pointer existence alone is not a
-        // reliable "window is open" test. Use the native visibility state for actual UI windows.
         var teamPartyVisible = IsAddonVisible(TeamCompositionAddonName);
         var boardLayoutVisible = IsAddonVisible(BoardLayoutAddonName);
         var resultVisible = IsAddonVisible(ResultAddonName);
-
-        // XBMContentsMainHUD has already proven reliable as the broad in-duty marker in testing.
         var inInstanceHudVisible = GameGui.GetAddonByName(InInstanceHudAddonName) != nint.Zero;
 
-        // XBMStageDetailList can be reused rather than set up from scratch for every board.
-        // Reset encounter state on the visible edge, not merely Addon PostSetup.
         if (boardLayoutVisible && !boardLayoutWasVisible)
         {
             ResetForNewBoardLayout();
@@ -181,14 +176,10 @@ public sealed class Plugin : IDalamudPlugin
             if (arenaEnteredForCurrentBoard && resultVisible)
                 resultSeenForCurrentArena = true;
 
-            // Preferred Arena -> Map signal: the real Results window was visible and then closed.
             if (arenaEnteredForCurrentBoard && resultSeenForCurrentArena && resultWasVisible && !resultVisible)
             {
                 ReturnToMap("Results panel closed");
             }
-            // Runtime-proven fallback: opening Team Composition on the duty map means we are no
-            // longer in the arena. This is later than Results, but prevents a permanently latched
-            // Arena state if a particular encounter does not expose the expected Results transition.
             else if (arenaEnteredForCurrentBoard && teamPartyVisible)
             {
                 ReturnToMap("Team Composition opened on duty map");
@@ -435,7 +426,7 @@ public sealed class Plugin : IDalamudPlugin
 
     private unsafe void SelectTeamCompositionRow(int row)
     {
-        if (row < 0 || row >= PartyRowCount)
+        if (row < 0 || row >= cachedSquadNames.Length)
             return;
 
         var addon = GameGui.GetAddonByName<AtkUnitBase>(TeamCompositionAddonName);
@@ -443,9 +434,9 @@ public sealed class Plugin : IDalamudPlugin
             return;
 
         var list = FindTeamCompositionList(addon);
-        if (list == null)
+        if (list == null || row >= list->ListLength)
         {
-            Log.Warning("Could not locate the 12-row XBMPetParty list component.");
+            Log.Warning("Could not locate the variable-length XBMPetParty list component for row {Row}.", row);
             return;
         }
 
@@ -465,6 +456,9 @@ public sealed class Plugin : IDalamudPlugin
         if (addon->UldManager.NodeList == null)
             return null;
 
+        AtkComponentList* best = null;
+        var bestLength = 0;
+
         for (var i = 0; i < addon->UldManager.NodeListCount; i++)
         {
             var node = addon->UldManager.NodeList[i];
@@ -477,11 +471,15 @@ public sealed class Plugin : IDalamudPlugin
                 continue;
 
             var list = (AtkComponentList*)component;
-            if (list->ListLength == PartyRowCount)
-                return list;
+            var length = list->ListLength;
+            if (length < MinimumPartyRowCount || length > MaximumPartyRowCount || length <= bestLength)
+                continue;
+
+            best = list;
+            bestLength = length;
         }
 
-        return null;
+        return best;
     }
 
     private unsafe void TryUpdateCurrentParty()
@@ -490,16 +488,24 @@ public sealed class Plugin : IDalamudPlugin
         if (addon == null || addon->AtkValues == null)
             return;
 
-        var lastRequiredIndex = FirstPartyAssignmentIndex + ((PartyRowCount - 1) * PartyRowStride);
+        var list = FindTeamCompositionList(addon);
+        if (list == null)
+            return;
+
+        var rowCount = list->ListLength;
+        if (rowCount < MinimumPartyRowCount || rowCount > MaximumPartyRowCount)
+            return;
+
+        var lastRequiredIndex = FirstPartyAssignmentIndex + ((rowCount - 1) * PartyRowStride);
         if (addon->AtkValuesCount <= lastRequiredIndex)
             return;
 
         var horns = new[] { "(unassigned)", "(unassigned)", "(unassigned)" };
-        var squad = new string[PartyRowCount];
-        var currentHp = new uint[PartyRowCount];
-        var maxHp = new uint[PartyRowCount];
+        var squad = new string[rowCount];
+        var currentHp = new uint[rowCount];
+        var maxHp = new uint[rowCount];
 
-        for (var row = 0; row < PartyRowCount; row++)
+        for (var row = 0; row < rowCount; row++)
         {
             var rowStart = row * PartyRowStride;
             var nameIndex = FirstPartyNameIndex + rowStart;
