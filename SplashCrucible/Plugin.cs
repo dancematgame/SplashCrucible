@@ -64,11 +64,10 @@ public sealed class Plugin : IDalamudPlugin
     private string cachedTopEnemyWeakness = string.Empty;
     private bool syntheticTeamCompositionClick;
     private bool arenaEnteredForCurrentBoard;
+    private bool arenaHudSeenVisible;
     private bool autoSummonCompletedForCurrentBoard;
     private DateTime? pendingArenaAutoSummonAt;
     private DateTime? arenaAutoSummonDeadline;
-    private bool resultWasVisible;
-    private bool resultSeenForCurrentArena;
     private bool boardLayoutWasVisible;
 
     public Plugin()
@@ -141,8 +140,8 @@ public sealed class Plugin : IDalamudPlugin
     {
         var teamPartyVisible = IsAddonVisible(TeamCompositionAddonName);
         var boardLayoutVisible = IsAddonVisible(BoardLayoutAddonName);
-        var resultVisible = IsAddonVisible(ResultAddonName);
-        var inInstanceHudVisible = GameGui.GetAddonByName(InInstanceHudAddonName) != nint.Zero;
+        var inInstanceHudPresent = GameGui.GetAddonByName(InInstanceHudAddonName) != nint.Zero;
+        var inInstanceHudVisible = IsAddonVisible(InInstanceHudAddonName);
 
         if (boardLayoutVisible && !boardLayoutWasVisible)
         {
@@ -157,28 +156,32 @@ public sealed class Plugin : IDalamudPlugin
         if (boardLayoutVisible)
             TryUpdateTopEnemyData();
 
-        if (!inInstanceHudVisible)
+        if (!inInstanceHudPresent)
         {
             arenaEnteredForCurrentBoard = false;
+            arenaHudSeenVisible = false;
             pendingArenaAutoSummonAt = null;
             arenaAutoSummonDeadline = null;
-            resultSeenForCurrentArena = false;
         }
         else
         {
             if (!boardLayoutVisible && !arenaEnteredForCurrentBoard && IsCachedTopEnemyPresent())
             {
                 arenaEnteredForCurrentBoard = true;
+                arenaHudSeenVisible = inInstanceHudVisible;
                 QueueArenaAutoSummon();
                 Log.Information("Arena detected from cached enemy {EnemyName}.", cachedTopEnemyName);
             }
 
-            if (arenaEnteredForCurrentBoard && resultVisible)
-                resultSeenForCurrentArena = true;
+            if (arenaEnteredForCurrentBoard && inInstanceHudVisible)
+                arenaHudSeenVisible = true;
 
-            if (arenaEnteredForCurrentBoard && resultSeenForCurrentArena && resultWasVisible && !resultVisible)
+            // Observed in-game: XBMContentsMainHUD is visible in the Arena and remains allocated
+            // but hidden on the playable Map. Once Arena has actually shown the HUD, its hide
+            // transition is therefore the preferred Arena -> Map signal.
+            if (arenaEnteredForCurrentBoard && arenaHudSeenVisible && !inInstanceHudVisible)
             {
-                ReturnToMap("Results panel closed");
+                ReturnToMap("Arena HUD became hidden");
             }
             else if (arenaEnteredForCurrentBoard && teamPartyVisible)
             {
@@ -186,12 +189,11 @@ public sealed class Plugin : IDalamudPlugin
             }
         }
 
-        resultWasVisible = resultVisible;
-        TryRunPendingArenaAutoSummon(inInstanceHudVisible);
+        TryRunPendingArenaAutoSummon(inInstanceHudPresent);
 
-        if (teamPartyVisible && !inInstanceHudVisible)
+        if (teamPartyVisible && !inInstanceHudPresent)
             mainWindow.CurrentMode = CrucibleMode.SelectSquad;
-        else if (inInstanceHudVisible)
+        else if (inInstanceHudPresent)
             mainWindow.CurrentMode = arenaEnteredForCurrentBoard ? CrucibleMode.Arena : CrucibleMode.Map;
         else
             mainWindow.CurrentMode = CrucibleMode.Unknown;
@@ -216,20 +218,19 @@ public sealed class Plugin : IDalamudPlugin
     private void ResetForNewBoardLayout()
     {
         arenaEnteredForCurrentBoard = false;
+        arenaHudSeenVisible = false;
         autoSummonCompletedForCurrentBoard = false;
         pendingArenaAutoSummonAt = null;
         arenaAutoSummonDeadline = null;
-        resultSeenForCurrentArena = false;
-        resultWasVisible = false;
     }
 
     private void ReturnToMap(string reason)
     {
         arenaEnteredForCurrentBoard = false;
+        arenaHudSeenVisible = false;
         pendingArenaAutoSummonAt = null;
         arenaAutoSummonDeadline = null;
         autoSummonCompletedForCurrentBoard = true;
-        resultSeenForCurrentArena = false;
         cachedTopEnemyName = string.Empty;
         cachedTopEnemyWeakness = string.Empty;
         Log.Information("{Reason}; returning state to Map.", reason);
@@ -246,12 +247,12 @@ public sealed class Plugin : IDalamudPlugin
         Log.Information("Horn 1 auto-summon check queued for Arena entry.");
     }
 
-    private void TryRunPendingArenaAutoSummon(bool inInstanceHudVisible)
+    private void TryRunPendingArenaAutoSummon(bool inInstanceHudPresent)
     {
         if (pendingArenaAutoSummonAt is null || DateTime.UtcNow < pendingArenaAutoSummonAt.Value)
             return;
 
-        if (!inInstanceHudVisible || !arenaEnteredForCurrentBoard)
+        if (!inInstanceHudPresent || !arenaEnteredForCurrentBoard)
         {
             pendingArenaAutoSummonAt = null;
             arenaAutoSummonDeadline = null;
