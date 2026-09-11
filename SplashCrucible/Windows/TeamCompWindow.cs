@@ -24,6 +24,11 @@ public sealed class TeamCompWindow : Window, IDisposable
     private const string InInstanceHudAddonName = "XBMContentsMainHUD";
     private const int ArenaHudProbeLimit = 200;
 
+    private readonly uint[] arenaLastKnownCurrentHp = new uint[3];
+    private readonly uint[] arenaLastKnownMaxHp = new uint[3];
+    private readonly string[] arenaLastKnownNames = { string.Empty, string.Empty, string.Empty };
+    private CrucibleMode previousMode = CrucibleMode.Unknown;
+
     private static string DisplayVersion
     {
         get
@@ -77,6 +82,8 @@ public sealed class TeamCompWindow : Window, IDisposable
 
     public override void Draw()
     {
+        UpdateArenaHpCache();
+
         var modeText = CurrentMode switch
         {
             CrucibleMode.SelectSquad => "Select Squad",
@@ -121,25 +128,57 @@ public sealed class TeamCompWindow : Window, IDisposable
         DrawDebugProbe();
     }
 
-    private unsafe void DrawArenaDiagnostics()
+    private void UpdateArenaHpCache()
     {
-        DrawSectionHeader("Arena Diagnostics");
-        ImGui.TextUnformatted("Horn HP: cached Team Composition value / live owned object value");
+        if (CurrentMode != CrucibleMode.Arena)
+        {
+            previousMode = CurrentMode;
+            return;
+        }
+
+        var enteringArena = previousMode != CrucibleMode.Arena;
 
         for (var hornIndex = 0; hornIndex < 3; hornIndex++)
         {
             var name = GetHornName(hornIndex);
             var squadIndex = Array.FindIndex(SquadNames,
                 squadName => string.Equals(squadName, name, StringComparison.OrdinalIgnoreCase));
-            var (cachedCurrent, cachedMax) = GetSquadHp(squadIndex);
+
+            if (enteringArena || !string.Equals(arenaLastKnownNames[hornIndex], name, StringComparison.OrdinalIgnoreCase))
+            {
+                var (cachedCurrent, cachedMax) = GetSquadHp(squadIndex);
+                arenaLastKnownNames[hornIndex] = name;
+                arenaLastKnownCurrentHp[hornIndex] = cachedCurrent;
+                arenaLastKnownMaxHp[hornIndex] = cachedMax;
+            }
+
+            var liveCharacter = FindOwnedHornCharacter(name);
+            if (liveCharacter is null || liveCharacter.MaxHp == 0)
+                continue;
+
+            arenaLastKnownCurrentHp[hornIndex] = liveCharacter.CurrentHp;
+            arenaLastKnownMaxHp[hornIndex] = liveCharacter.MaxHp;
+        }
+
+        previousMode = CurrentMode;
+    }
+
+    private unsafe void DrawArenaDiagnostics()
+    {
+        DrawSectionHeader("Arena Diagnostics");
+        ImGui.TextUnformatted("Horn HP: retained latest-known value / live owned object value");
+
+        for (var hornIndex = 0; hornIndex < 3; hornIndex++)
+        {
+            var name = GetHornName(hornIndex);
             var liveCharacter = FindOwnedHornCharacter(name);
 
-            var cachedText = FormatHp(cachedCurrent, cachedMax);
+            var retainedText = FormatHp(arenaLastKnownCurrentHp[hornIndex], arenaLastKnownMaxHp[hornIndex]);
             var liveText = liveCharacter is null
                 ? "not spawned"
                 : FormatHp(liveCharacter.CurrentHp, liveCharacter.MaxHp);
 
-            ImGui.BulletText($"Horn {hornIndex + 1} — {name}: cached {cachedText} / live {liveText}");
+            ImGui.BulletText($"Horn {hornIndex + 1} — {name}: retained {retainedText} / live {liveText}");
         }
 
         ImGui.Spacing();
@@ -276,7 +315,9 @@ public sealed class TeamCompWindow : Window, IDisposable
         var name = GetHornName(hornIndex);
         var squadIndex = Array.FindIndex(SquadNames,
             squadName => string.Equals(squadName, name, StringComparison.OrdinalIgnoreCase));
-        var (currentHp, maxHp) = GetSquadHp(squadIndex);
+        var (currentHp, maxHp) = CurrentMode == CrucibleMode.Arena
+            ? (arenaLastKnownCurrentHp[hornIndex], arenaLastKnownMaxHp[hornIndex])
+            : GetSquadHp(squadIndex);
 
         var startX = ImGui.GetCursorPosX();
         var rowY = ImGui.GetCursorPosY();
