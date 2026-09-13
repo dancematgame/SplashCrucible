@@ -456,7 +456,17 @@ public sealed class Plugin : IDalamudPlugin
         }
 
         Log.Information("Using {ActionName} via ActionManager (action ID {ActionId}).", BattlehornActionNames[hornIndex], actionId);
-        actionManager->UseAction(ActionType.Action, actionId);
+        if (!actionManager->UseAction(ActionType.Action, actionId))
+            return;
+
+        arenaEnteredForCurrentBoard = true;
+        arenaHudSeenVisible = IsAddonVisible(InInstanceHudAddonName);
+        autoSummonCompletedForCurrentBoard = true;
+        pendingArenaAutoSummonAt = null;
+        arenaAutoSummonDeadline = null;
+        arenaDeathObserved = false;
+        arenaReviveGraceUntil = null;
+        Log.Information("Successful Battlehorn use latched Arena mode.");
     }
 
     private unsafe void CommenceBattle()
